@@ -1,0 +1,11 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
+data/media/*
+data/clips/*
+!data/media/.gitkeep
+!data/clips/.gitkeep
