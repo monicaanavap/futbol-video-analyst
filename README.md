@@ -32,6 +32,30 @@ uvicorn futbol_video_analyst.main:app --reload
 
 Visita `http://127.0.0.1:8000/docs` para probar la API.
 
+## Interfaz local
+
+En otra terminal, inicia la interfaz React:
+
+```bash
+cd apps/desktop
+npm install
+npm run dev
+```
+
+Abre `http://127.0.0.1:1420`. La interfaz permite importar partidos, reproducir
+el video original, ver etiquetas en la línea de tiempo, filtrarlas por tipo y
+crear nuevas etiquetas manuales.
+
+Para ejecutar la ventana nativa durante el desarrollo:
+
+```bash
+cd apps/desktop
+npm run tauri dev
+```
+
+Por ahora el motor Python debe estar ejecutándose por separado en el puerto
+`8000`. Una etapa posterior lo empaquetará como proceso auxiliar de Tauri.
+
 ## Flujo disponible
 
 El motor local ya permite:

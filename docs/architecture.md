@@ -9,6 +9,15 @@
 - **Almacenamiento:** SQLite conserva metadatos y referencias a videos locales.
 - **Interfaz de revision:** permite confirmar, corregir o descartar eventos.
 
+## Implementación de escritorio
+
+La interfaz utiliza React y TypeScript. Tauri crea la ventana nativa y proporciona
+el selector de archivos. Durante el desarrollo, la interfaz se comunica con el
+motor FastAPI en `127.0.0.1:8000`; no se permite acceso desde orígenes remotos.
+
+El endpoint de video solo sirve rutas registradas previamente en SQLite. Esto
+permite reproducción y búsqueda temporal sin duplicar el archivo original.
+
 ## Flujo de datos
 
 ```text

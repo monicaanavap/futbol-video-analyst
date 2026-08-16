@@ -33,6 +33,14 @@ def test_imports_and_lists_a_match(tmp_path: Path) -> None:
     assert response.json() == [created]
 
 
+def test_serves_the_original_video(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        match = import_match(client, tmp_path)
+        response = client.get(f"/matches/{match['id']}/video")
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("inline")
+
+
 def test_creates_and_filters_manual_events(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         match_id = import_match(client, tmp_path)["id"]

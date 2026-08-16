@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from futbol_video_analyst.config import settings
 from futbol_video_analyst.database import Database
@@ -30,6 +32,19 @@ def create_app(
         description="Motor local para analizar partidos y administrar etiquetas.",
         version="0.2.0",
         lifespan=lifespan,
+    )
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://127.0.0.1:1420",
+            "http://localhost:1420",
+            "http://127.0.0.1:5173",
+            "http://localhost:5173",
+            "tauri://localhost",
+            "https://tauri.localhost",
+        ],
+        allow_methods=["GET", "POST", "DELETE", "PATCH"],
+        allow_headers=["Content-Type"],
     )
 
     @application.get("/health", tags=["system"])
@@ -62,6 +77,16 @@ def create_app(
         if match is None:
             raise HTTPException(status_code=404, detail="Match not found")
         return match
+
+    @application.get("/matches/{match_id}/video", response_class=FileResponse, tags=["matches"])
+    def get_match_video(match_id: str, request: Request) -> FileResponse:
+        match = request.app.state.database.get_match(match_id)
+        if match is None:
+            raise HTTPException(status_code=404, detail="Match not found")
+        path = Path(match.video_path)
+        if not path.is_file():
+            raise HTTPException(status_code=410, detail="Video file is no longer available")
+        return FileResponse(path, filename=path.name, content_disposition_type="inline")
 
     @application.post(
         "/matches/{match_id}/events",

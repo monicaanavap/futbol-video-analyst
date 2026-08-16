@@ -5,6 +5,10 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.py[cod]
+apps/desktop/node_modules/
+apps/desktop/dist/
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/schemas/
 data/media/*
 data/clips/*
 data/*.sqlite3
