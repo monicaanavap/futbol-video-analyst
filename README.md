@@ -32,6 +32,29 @@ uvicorn futbol_video_analyst.main:app --reload
 
 Visita `http://127.0.0.1:8000/docs` para probar la API.
 
+## Flujo disponible
+
+El motor local ya permite:
+
+1. Importar un video por su ruta local y leer sus metadatos con FFprobe.
+2. Guardar el partido en SQLite sin copiar ni subir el video.
+3. Crear etiquetas manuales ligadas a segundos del partido.
+4. Consultar todas las etiquetas o filtrarlas por tipo.
+
+Ejemplo para importar un partido:
+
+```bash
+curl -X POST http://127.0.0.1:8000/matches/import \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "title": "Local vs Visitante",
+    "video_path": "/ruta/absoluta/al/partido.mp4"
+  }'
+```
+
+La base local se crea en `data/futbol-video-analyst.sqlite3`. Los videos permanecen
+en su ubicación original.
+
 ## Pruebas
 
 ```bash
@@ -40,9 +63,8 @@ pytest
 
 ## Alcance sugerido del primer MVP
 
-Empezaremos con uno o dos eventos que puedan medirse bien, por ejemplo tiros de
-esquina y penales. Cada clip conservara el minuto del partido, la confianza del
-detector y un estado de revision humana. La deteccion de goles, formaciones,
-posesion y seguimiento de jugadores puede añadirse por etapas.
+Empezaremos con un evento que pueda medirse bien: tiros de esquina. Cada etiqueta
+conservará su intervalo, momento principal, confianza, origen y estado de revisión.
+La interfaz mostrará las etiquetas sobre el video completo y permitirá filtrarlas.
 
 Consulta [docs/architecture.md](docs/architecture.md) para la propuesta tecnica.
