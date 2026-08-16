@@ -53,8 +53,13 @@ cd apps/desktop
 npm run tauri dev
 ```
 
-Por ahora el motor Python debe estar ejecutándose por separado en el puerto
-`8000`. Una etapa posterior lo empaquetará como proceso auxiliar de Tauri.
+La ventana nativa inicia automáticamente el motor Python desde `.venv`, espera a
+que esté disponible y lo detiene cuando la aplicación termina. Si el motor ya
+está ejecutándose en el puerto `8000`, la app reutiliza esa instancia.
+
+En Web Preview todavía se deben iniciar por separado la API y `npm run dev`, ya
+que ahí no participa el proceso nativo de Tauri. Una etapa posterior convertirá
+el motor en un binario auxiliar para distribuirlo sin requerir Python instalado.
 
 ## Flujo disponible
 

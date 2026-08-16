@@ -56,7 +56,8 @@ video { width: 100%; max-height: 56vh; display: block; border-radius: 10px; back
 .empty-icon { width: 70px; height: 70px; display: grid; place-items: center; margin-bottom: 20px; border: 1px solid #375144; border-radius: 22px; color: #66d49a; background: #16231c; }
 .no-events { padding: 45px; color: #7d8d84; text-align: center; }
 .no-events button { border: 0; color: #66d49a; background: none; }
-.error-banner { margin-bottom: 18px; padding: 12px 15px; border: 1px solid #693a42; border-radius: 9px; color: #f3adb7; background: #331c21; }
+.error-banner { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 18px; padding: 12px 15px; border: 1px solid #693a42; border-radius: 9px; color: #f3adb7; background: #331c21; }
+.error-banner button { border: 0; color: #ffd0d6; font-weight: 700; background: transparent; }
 .modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(2, 5, 3, .76); backdrop-filter: blur(7px); }
 .modal { width: min(540px, 100%); position: relative; padding: 29px; border: 1px solid #35463d; border-radius: 16px; background: #151f1a; box-shadow: 0 30px 90px #000; }
 .modal.compact { width: min(470px, 100%); }

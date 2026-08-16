@@ -35,21 +35,31 @@ function App() {
   const [showEvent, setShowEvent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [engineState, setEngineState] = useState<"starting" | "ready" | "error">("starting");
 
-  const refreshMatches = async () => {
-    try {
-      const result = await api.listMatches();
-      setMatches(result);
-      setSelected((current) => current ?? result[0] ?? null);
-      setError("");
-    } catch {
-      setError("No pudimos conectar con el motor local. Verifica que la API esté encendida.");
-    } finally {
-      setLoading(false);
+  const connectToEngine = async () => {
+    setLoading(true);
+    setEngineState("starting");
+    setError("");
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        await api.health();
+        const result = await api.listMatches();
+        setMatches(result);
+        setSelected((current) => current ?? result[0] ?? null);
+        setEngineState("ready");
+        setLoading(false);
+        return;
+      } catch {
+        await new Promise((resolve) => window.setTimeout(resolve, 350));
+      }
     }
+    setEngineState("error");
+    setError("El motor local no pudo iniciar. Puedes intentar conectarlo de nuevo.");
+    setLoading(false);
   };
 
-  useEffect(() => { void refreshMatches(); }, []);
+  useEffect(() => { void connectToEngine(); }, []);
   useEffect(() => {
     if (!selected) { setEvents([]); return; }
     void api.listEvents(selected.id).then(setEvents).catch((reason: Error) => setError(reason.message));
@@ -90,12 +100,12 @@ function App() {
       <header className="topbar">
         <div className="brand-mark">F</div>
         <div><strong>Fútbol Analyst</strong><span>Análisis local · Tus videos no salen de aquí</span></div>
-        <button className="primary" onClick={() => setShowImport(true)}>+ Importar partido</button>
+        <button className="primary" disabled={engineState !== "ready"} onClick={() => setShowImport(true)}>+ Importar partido</button>
       </header>
 
       <aside className="sidebar">
         <p className="eyebrow">PARTIDOS</p>
-        {loading && <p className="muted">Cargando…</p>}
+        {loading && <p className="muted">Iniciando motor local…</p>}
         {matches.map((match) => (
           <button
             className={`match-card ${selected?.id === match.id ? "active" : ""}`}
@@ -110,7 +120,7 @@ function App() {
       </aside>
 
       <main className="workspace">
-        {error && <div className="error-banner">{error}</div>}
+        {error && <div className="error-banner"><span>{error}</span><button onClick={() => void connectToEngine()}>Reintentar</button></div>}
         {!selected ? (
           <section className="empty-state">
             <div className="empty-icon">▶</div>

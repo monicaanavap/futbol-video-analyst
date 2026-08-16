@@ -11,9 +11,11 @@
 
 ## Implementación de escritorio
 
-La interfaz utiliza React y TypeScript. Tauri crea la ventana nativa y proporciona
-el selector de archivos. Durante el desarrollo, la interfaz se comunica con el
-motor FastAPI en `127.0.0.1:8000`; no se permite acceso desde orígenes remotos.
+La interfaz utiliza React y TypeScript. Tauri crea la ventana nativa, proporciona
+el selector de archivos y administra el ciclo de vida del motor FastAPI en
+`127.0.0.1:8000`; no se permite acceso desde orígenes remotos. React reintenta la
+conexión mientras el proceso local termina de arrancar y ofrece recuperación si
+el proceso falla.
 
 El endpoint de video solo sirve rutas registradas previamente en SQLite. Esto
 permite reproducción y búsqueda temporal sin duplicar el archivo original.
