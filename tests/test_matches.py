@@ -1,8 +1,11 @@
+import time
+from collections.abc import Callable
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from futbol_video_analyst.domain import VideoMetadata
+from futbol_video_analyst.domain import Match, VideoMetadata, VisualSignal
 from futbol_video_analyst.main import create_app
 
 
@@ -18,6 +21,25 @@ class FakeClipExporter:
         return destination
 
 
+class FakeVisualAnalyzer:
+    def analyze(
+        self, match: Match, on_progress: Callable[[float, int], None]
+    ) -> list[VisualSignal]:
+        match_id = match.id
+        on_progress(1.0, 1)
+        return [
+            VisualSignal(
+                id=str(uuid4()),
+                match_id=match_id,
+                timestamp_seconds=4,
+                green_ratio=0.72,
+                brightness=0.5,
+                change_score=0.14,
+                likely_field=True,
+            )
+        ]
+
+
 def make_client(tmp_path: Path) -> TestClient:
     return TestClient(
         create_app(
@@ -25,6 +47,7 @@ def make_client(tmp_path: Path) -> TestClient:
             FakeVideoInspector(),
             clips_dir=tmp_path / "clips",
             clip_exporter=FakeClipExporter(),
+            visual_analyzer=FakeVisualAnalyzer(),
         )
     )
 
@@ -96,3 +119,25 @@ def test_exports_the_event_interval_as_a_clip(tmp_path: Path) -> None:
     assert response.headers["content-type"] == "video/mp4"
     assert response.headers["content-disposition"].startswith("attachment")
     assert response.content.endswith(b":10.0:25.0")
+
+
+def test_runs_visual_analysis_in_the_background(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        match_id = import_match(client, tmp_path)["id"]
+        started = client.post(f"/matches/{match_id}/analysis")
+        assert started.status_code == 202
+        job_id = started.json()["id"]
+
+        job = started.json()
+        for _ in range(20):
+            job = client.get(f"/analysis/{job_id}").json()
+            if job["status"] == "completed":
+                break
+            time.sleep(0.01)
+
+        signals = client.get(f"/matches/{match_id}/signals")
+
+    assert job["status"] == "completed"
+    assert job["progress"] == 1
+    assert job["samples_processed"] == 1
+    assert signals.json()[0]["likely_field"] is True

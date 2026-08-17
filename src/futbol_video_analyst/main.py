@@ -8,10 +8,19 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from futbol_video_analyst.analysis import AnalysisCoordinator, VisualSignalAnalyzer
 from futbol_video_analyst.clips import ClipExportError, FFmpegClipExporter
 from futbol_video_analyst.config import settings
 from futbol_video_analyst.database import Database
-from futbol_video_analyst.domain import Event, EventCreate, EventType, Match, MatchImport
+from futbol_video_analyst.domain import (
+    AnalysisJob,
+    Event,
+    EventCreate,
+    EventType,
+    Match,
+    MatchImport,
+    VisualSignal,
+)
 from futbol_video_analyst.video import FFprobeVideoInspector, VideoInspectionError
 
 
@@ -20,9 +29,11 @@ def create_app(
     video_inspector: FFprobeVideoInspector | None = None,
     clips_dir: Path | None = None,
     clip_exporter: FFmpegClipExporter | None = None,
+    visual_analyzer: VisualSignalAnalyzer | None = None,
 ) -> FastAPI:
     database = Database(database_path or settings.database_path)
     local_clips_dir = clips_dir or settings.clips_dir
+    analysis_coordinator = AnalysisCoordinator(database, visual_analyzer)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -30,7 +41,9 @@ def create_app(
         application.state.database = database
         application.state.video_inspector = video_inspector or FFprobeVideoInspector()
         application.state.clip_exporter = clip_exporter or FFmpegClipExporter()
+        application.state.analysis_coordinator = analysis_coordinator
         yield
+        analysis_coordinator.shutdown()
 
     application = FastAPI(
         title="Futbol Video Analyst API",
@@ -136,6 +149,44 @@ def create_app(
         except ClipExportError as error:
             raise HTTPException(status_code=500, detail=str(error)) from error
         return FileResponse(destination, filename=filename, media_type="video/mp4")
+
+    @application.post(
+        "/matches/{match_id}/analysis",
+        response_model=AnalysisJob,
+        status_code=status.HTTP_202_ACCEPTED,
+        tags=["analysis"],
+    )
+    def start_analysis(match_id: str, request: Request) -> AnalysisJob:
+        match = request.app.state.database.get_match(match_id)
+        if match is None:
+            raise HTTPException(status_code=404, detail="Match not found")
+        return request.app.state.analysis_coordinator.start(match)
+
+    @application.get("/analysis/{job_id}", response_model=AnalysisJob, tags=["analysis"])
+    def get_analysis(job_id: str, request: Request) -> AnalysisJob:
+        job = request.app.state.database.get_analysis_job(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Analysis job not found")
+        return job
+
+    @application.get(
+        "/matches/{match_id}/analysis/latest", response_model=AnalysisJob, tags=["analysis"]
+    )
+    def get_latest_analysis(match_id: str, request: Request) -> AnalysisJob:
+        if request.app.state.database.get_match(match_id) is None:
+            raise HTTPException(status_code=404, detail="Match not found")
+        job = request.app.state.database.get_latest_analysis_job(match_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Match has not been analyzed")
+        return job
+
+    @application.get(
+        "/matches/{match_id}/signals", response_model=list[VisualSignal], tags=["analysis"]
+    )
+    def list_visual_signals(match_id: str, request: Request) -> list[VisualSignal]:
+        if request.app.state.database.get_match(match_id) is None:
+            raise HTTPException(status_code=404, detail="Match not found")
+        return request.app.state.database.list_visual_signals(match_id)
 
     return application
 

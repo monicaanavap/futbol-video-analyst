@@ -36,3 +36,25 @@ export interface EventDraft {
   source: "manual";
   notes: string;
 }
+
+export interface AnalysisJob {
+  id: string;
+  match_id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  stage: "queued" | "sampling" | "completed" | "failed";
+  progress: number;
+  samples_processed: number;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VisualSignal {
+  id: string;
+  match_id: string;
+  timestamp_seconds: number;
+  green_ratio: number;
+  brightness: number;
+  change_score: number;
+  likely_field: boolean;
+}

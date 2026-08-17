@@ -5,12 +5,16 @@ from pathlib import Path
 from uuid import uuid4
 
 from futbol_video_analyst.domain import (
+    AnalysisJob,
+    AnalysisStage,
+    AnalysisStatus,
     Event,
     EventCreate,
     Match,
     MatchStatus,
     ReviewStatus,
     VideoMetadata,
+    VisualSignal,
 )
 
 SCHEMA = """
@@ -42,6 +46,31 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS events_match_time_idx ON events(match_id, peak_seconds);
+
+CREATE TABLE IF NOT EXISTS analysis_jobs (
+    id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    status TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    progress REAL NOT NULL DEFAULT 0,
+    samples_processed INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS visual_signals (
+    id TEXT PRIMARY KEY,
+    match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+    timestamp_seconds REAL NOT NULL,
+    green_ratio REAL NOT NULL,
+    brightness REAL NOT NULL,
+    change_score REAL NOT NULL,
+    likely_field INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS visual_signals_match_time_idx
+ON visual_signals(match_id, timestamp_seconds);
 """
 
 
@@ -142,3 +171,88 @@ class Database:
         with self.connect() as connection:
             rows = connection.execute(query, parameters).fetchall()
         return [Event.model_validate(dict(row)) for row in rows]
+
+    def create_analysis_job(self, match_id: str) -> AnalysisJob:
+        job_id = str(uuid4())
+        with self.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO analysis_jobs (id, match_id, status, stage)
+                VALUES (?, ?, ?, ?)
+                """,
+                (job_id, match_id, AnalysisStatus.QUEUED, AnalysisStage.QUEUED),
+            )
+        job = self.get_analysis_job(job_id)
+        assert job is not None
+        return job
+
+    def get_analysis_job(self, job_id: str) -> AnalysisJob | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM analysis_jobs WHERE id = ?", (job_id,)
+            ).fetchone()
+        return AnalysisJob.model_validate(dict(row)) if row else None
+
+    def get_latest_analysis_job(self, match_id: str) -> AnalysisJob | None:
+        with self.connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM analysis_jobs WHERE match_id = ?
+                ORDER BY created_at DESC, rowid DESC LIMIT 1
+                """,
+                (match_id,),
+            ).fetchone()
+        return AnalysisJob.model_validate(dict(row)) if row else None
+
+    def update_analysis_job(
+        self,
+        job_id: str,
+        *,
+        status: AnalysisStatus,
+        stage: AnalysisStage,
+        progress: float,
+        samples_processed: int,
+        error: str | None = None,
+    ) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE analysis_jobs
+                SET status = ?, stage = ?, progress = ?, samples_processed = ?,
+                    error = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (status, stage, progress, samples_processed, error, job_id),
+            )
+
+    def replace_visual_signals(self, match_id: str, signals: list[VisualSignal]) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM visual_signals WHERE match_id = ?", (match_id,))
+            connection.executemany(
+                """
+                INSERT INTO visual_signals (
+                    id, match_id, timestamp_seconds, green_ratio,
+                    brightness, change_score, likely_field
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        signal.id,
+                        signal.match_id,
+                        signal.timestamp_seconds,
+                        signal.green_ratio,
+                        signal.brightness,
+                        signal.change_score,
+                        int(signal.likely_field),
+                    )
+                    for signal in signals
+                ],
+            )
+
+    def list_visual_signals(self, match_id: str) -> list[VisualSignal]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM visual_signals WHERE match_id = ? ORDER BY timestamp_seconds",
+                (match_id,),
+            ).fetchall()
+        return [VisualSignal.model_validate(dict(row)) for row in rows]

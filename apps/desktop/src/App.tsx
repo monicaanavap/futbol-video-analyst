@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
-import type { EventDraft, EventType, Match, MatchEvent } from "./types";
+import type { AnalysisJob, EventDraft, EventType, Match, MatchEvent, VisualSignal } from "./types";
 
 const eventLabels: Record<EventType, string> = {
   corner: "Corners",
@@ -37,6 +37,8 @@ function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [exportingEvent, setExportingEvent] = useState<string | null>(null);
+  const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
+  const [signals, setSignals] = useState<VisualSignal[]>([]);
   const [engineState, setEngineState] = useState<"starting" | "ready" | "error">("starting");
 
   const connectToEngine = async () => {
@@ -63,9 +65,30 @@ function App() {
 
   useEffect(() => { void connectToEngine(); }, []);
   useEffect(() => {
-    if (!selected) { setEvents([]); return; }
+    if (!selected) { setEvents([]); setAnalysisJob(null); setSignals([]); return; }
     void api.listEvents(selected.id).then(setEvents).catch((reason: Error) => setError(reason.message));
+    void api.latestAnalysis(selected.id)
+      .then(async (job) => {
+        setAnalysisJob(job);
+        if (job.status === "completed") setSignals(await api.listSignals(selected.id));
+      })
+      .catch(() => { setAnalysisJob(null); setSignals([]); });
   }, [selected]);
+
+  useEffect(() => {
+    if (!analysisJob || !["queued", "running"].includes(analysisJob.status)) return;
+    const timer = window.setInterval(() => {
+      void api.getAnalysis(analysisJob.id).then(async (job) => {
+        setAnalysisJob(job);
+        if (job.status === "completed" && selected) {
+          setSignals(await api.listSignals(selected.id));
+          setNotice("Análisis visual completado");
+        }
+        if (job.status === "failed") setError(job.error ?? "El análisis no pudo completarse");
+      });
+    }, 700);
+    return () => window.clearInterval(timer);
+  }, [analysisJob?.id, analysisJob?.status, selected]);
 
   const visibleEvents = useMemo(
     () => events.filter((event) => filters.has(event.type)),
@@ -117,6 +140,20 @@ function App() {
     }
   };
 
+  const startAnalysis = async () => {
+    if (!selected) return;
+    setError("");
+    setSignals([]);
+    try {
+      setAnalysisJob(await api.startAnalysis(selected.id));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo iniciar el análisis");
+    }
+  };
+
+  const fieldSamples = signals.filter((signal) => signal.likely_field).length;
+  const strongChanges = signals.filter((signal) => signal.change_score >= 0.18).length;
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -155,7 +192,10 @@ function App() {
           <>
             <section className="match-heading">
               <div><p className="eyebrow">PARTIDO</p><h1>{selected.title}</h1></div>
-              <button className="secondary" onClick={() => setShowEvent(true)}>+ Nueva etiqueta</button>
+              <div className="heading-actions">
+                <button className="analysis-button" disabled={analysisJob?.status === "queued" || analysisJob?.status === "running"} onClick={() => void startAnalysis()}>{analysisJob?.status === "completed" ? "Analizar de nuevo" : "Analizar partido"}</button>
+                <button className="secondary" onClick={() => setShowEvent(true)}>+ Nueva etiqueta</button>
+              </div>
             </section>
             <section className="video-panel">
               <video ref={videoRef} key={selected.id} controls src={api.videoUrl(selected.id)} />
@@ -172,6 +212,16 @@ function App() {
                 ))}
               </div>
             </section>
+            {analysisJob && <section className={`analysis-card ${analysisJob.status}`}>
+              <div className="analysis-copy">
+                <span className="analysis-icon">◎</span>
+                <div><strong>{analysisJob.status === "completed" ? "Análisis visual listo" : analysisJob.status === "failed" ? "No se pudo analizar" : "Analizando el partido"}</strong>
+                <small>{analysisJob.status === "completed" ? `${signals.length} muestras revisadas localmente` : analysisJob.stage === "sampling" ? "Revisando campo, luz y cambios de cámara…" : "Preparando el video…"}</small></div>
+              </div>
+              {analysisJob.status === "completed" ? <div className="analysis-metrics">
+                <span><b>{fieldSamples}</b>campo visible</span><span><b>{strongChanges}</b>cambios fuertes</span>
+              </div> : <div className="progress-wrap"><span>{Math.round(analysisJob.progress * 100)}%</span><div className="progress-track"><i style={{ width: `${analysisJob.progress * 100}%` }} /></div><small>{analysisJob.samples_processed} muestras</small></div>}
+            </section>}
             <section className="filters">
               <span className="eyebrow">MOSTRAR</span>
               {(Object.keys(eventLabels) as EventType[]).map((type) => (

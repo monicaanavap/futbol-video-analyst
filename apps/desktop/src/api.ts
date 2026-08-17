@@ -1,4 +1,4 @@
-import type { EventDraft, Match, MatchEvent } from "./types";
+import type { AnalysisJob, EventDraft, Match, MatchEvent, VisualSignal } from "./types";
 
 export const API_URL = "http://127.0.0.1:8000";
 
@@ -38,5 +38,12 @@ export const api = {
     const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] ?? `clip-${eventId}.mp4`;
     return { blob: await response.blob(), filename };
   },
+  startAnalysis: (matchId: string) =>
+    request<AnalysisJob>(`/matches/${matchId}/analysis`, { method: "POST" }),
+  getAnalysis: (jobId: string) => request<AnalysisJob>(`/analysis/${jobId}`),
+  latestAnalysis: (matchId: string) =>
+    request<AnalysisJob>(`/matches/${matchId}/analysis/latest`),
+  listSignals: (matchId: string) =>
+    request<VisualSignal[]>(`/matches/${matchId}/signals`),
   videoUrl: (matchId: string) => `${API_URL}/matches/${matchId}/video`,
 };

@@ -25,6 +25,21 @@ Los clips son derivados opcionales: FFmpeg recodifica únicamente el intervalo
 generan clips para todas las etiquetas automáticamente, evitando procesamiento y
 uso de disco innecesarios.
 
+## Pipeline visual inicial
+
+El análisis corre en un único worker local para no saturar la computadora del
+coach. Los trabajos y su progreso se guardan en SQLite. OpenCV toma una muestra
+cada dos segundos, reduce su tamaño y calcula:
+
+- proporción de pixeles compatibles con césped;
+- luminosidad media;
+- diferencia visual respecto a la muestra anterior;
+- una clasificación preliminar de campo visible.
+
+Las señales se guardan con su timestamp y pueden recuperarse después de cerrar la
+aplicación. Esta etapa no crea etiquetas automáticas todavía; el siguiente detector
+combinará estas señales con balón, jugadores y geometría del campo.
+
 ## Flujo de datos
 
 ```text

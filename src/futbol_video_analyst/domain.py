@@ -30,6 +30,20 @@ class ReviewStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class AnalysisStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class AnalysisStage(StrEnum):
+    QUEUED = "queued"
+    SAMPLING = "sampling"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class VideoMetadata(BaseModel):
     duration_seconds: float = Field(gt=0)
     width: int = Field(gt=0)
@@ -77,3 +91,25 @@ class Event(EventCreate):
     match_id: str
     review_status: ReviewStatus
     created_at: str
+
+
+class AnalysisJob(BaseModel):
+    id: str
+    match_id: str
+    status: AnalysisStatus
+    stage: AnalysisStage
+    progress: float = Field(ge=0, le=1)
+    samples_processed: int = Field(ge=0)
+    error: str | None
+    created_at: str
+    updated_at: str
+
+
+class VisualSignal(BaseModel):
+    id: str
+    match_id: str
+    timestamp_seconds: float = Field(ge=0)
+    green_ratio: float = Field(ge=0, le=1)
+    brightness: float = Field(ge=0, le=1)
+    change_score: float = Field(ge=0, le=1)
+    likely_field: bool

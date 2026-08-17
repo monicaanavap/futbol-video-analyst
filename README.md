@@ -70,6 +70,7 @@ El motor local ya permite:
 3. Crear etiquetas manuales ligadas a segundos del partido.
 4. Consultar todas las etiquetas o filtrarlas por tipo.
 5. Exportar bajo demanda un clip MP4 desde el inicio hasta el final de una etiqueta.
+6. Ejecutar un primer análisis visual local con progreso y señales por muestra.
 
 Ejemplo para importar un partido:
 
@@ -86,6 +87,11 @@ La base local se crea en `data/futbol-video-analyst.sqlite3`. Los videos permane
 en su ubicación original. Los clips solicitados se generan en `data/clips`; por
 defecto incluyen cinco segundos antes y diez después del momento clave. La opción
 `Ajustar duración del clip` permite cambiar ese intervalo.
+
+El botón `Analizar partido` toma una muestra cada dos segundos y calcula, con
+OpenCV, proporción de verde, luminosidad y cambio visual. Estos valores todavía
+no representan eventos: son las señales base para construir y evaluar el detector
+automático de corners.
 
 ## Pruebas
 
