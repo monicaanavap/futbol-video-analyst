@@ -28,5 +28,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify(event),
     }),
+  exportClip: async (eventId: string) => {
+    const response = await fetch(`${API_URL}/events/${eventId}/clip`, { method: "POST" });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ detail: "No se pudo exportar el clip" }));
+      throw new Error(body.detail ?? "No se pudo exportar el clip");
+    }
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] ?? `clip-${eventId}.mp4`;
+    return { blob: await response.blob(), filename };
+  },
   videoUrl: (matchId: string) => `${API_URL}/matches/${matchId}/video`,
 };

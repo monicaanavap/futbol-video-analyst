@@ -35,6 +35,8 @@ function App() {
   const [showEvent, setShowEvent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [exportingEvent, setExportingEvent] = useState<string | null>(null);
   const [engineState, setEngineState] = useState<"starting" | "ready" | "error">("starting");
 
   const connectToEngine = async () => {
@@ -95,6 +97,26 @@ function App() {
     setShowEvent(false);
   };
 
+  const exportClip = async (event: MatchEvent) => {
+    setExportingEvent(event.id);
+    setError("");
+    setNotice("");
+    try {
+      const { blob, filename } = await api.exportClip(event.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNotice(`Clip exportado: ${filename}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo exportar el clip");
+    } finally {
+      setExportingEvent(null);
+    }
+  };
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -120,7 +142,8 @@ function App() {
       </aside>
 
       <main className="workspace">
-        {error && <div className="error-banner"><span>{error}</span><button onClick={() => void connectToEngine()}>Reintentar</button></div>}
+        {error && <div className="error-banner"><span>{error}</span>{engineState === "error" && <button onClick={() => void connectToEngine()}>Reintentar</button>}</div>}
+        {notice && <div className="notice-banner"><span>{notice}</span><button onClick={() => setNotice("")}>×</button></div>}
         {!selected ? (
           <section className="empty-state">
             <div className="empty-icon">▶</div>
@@ -163,13 +186,18 @@ function App() {
               {visibleEvents.length === 0 ? (
                 <div className="no-events"><p>No hay etiquetas con estos filtros.</p><button onClick={() => setShowEvent(true)}>Agregar una manualmente</button></div>
               ) : visibleEvents.map((event) => (
-                <button className="event-row" key={event.id} onClick={() => seek(event.peak_seconds)}>
-                  <span className="event-time">{formatTime(event.peak_seconds)}</span>
-                  <i style={{ background: eventColors[event.type] }} />
-                  <span><strong>{eventLabels[event.type]}</strong><small>{event.notes || "Etiqueta manual"}</small></span>
-                  <span className="event-source">{event.source === "manual" ? "Manual" : `${Math.round(event.confidence * 100)}%`}</span>
-                  <span className="play-button">▶</span>
-                </button>
+                <div className="event-row" key={event.id}>
+                  <button className="event-seek" onClick={() => seek(event.peak_seconds)}>
+                    <span className="event-time">{formatTime(event.peak_seconds)}</span>
+                    <i style={{ background: eventColors[event.type] }} />
+                    <span><strong>{eventLabels[event.type]}</strong><small>{event.notes || "Etiqueta manual"}</small></span>
+                    <span className="event-source">{event.source === "manual" ? "Manual" : `${Math.round(event.confidence * 100)}%`}</span>
+                    <span className="play-button">▶</span>
+                  </button>
+                  <button className="clip-button" disabled={exportingEvent === event.id} onClick={() => void exportClip(event)}>
+                    {exportingEvent === event.id ? "Exportando…" : "Exportar clip"}
+                  </button>
+                </div>
               ))}
             </section>
           </>
@@ -216,11 +244,21 @@ function EventDialog({ match, currentTime, onClose, onCreated }: { match: Match;
   const peak = Math.round(currentTime);
   const [draft, setDraft] = useState<EventDraft>({ type: "corner", start_seconds: Math.max(0, peak - 5), peak_seconds: peak, end_seconds: Math.min(match.duration_seconds, peak + 10), confidence: 1, source: "manual", notes: "" });
   const [error, setError] = useState("");
+  const updatePeak = (value: number) => setDraft({
+    ...draft,
+    peak_seconds: value,
+    start_seconds: Math.max(0, value - 5),
+    end_seconds: Math.min(match.duration_seconds, value + 10),
+  });
   const submit = async (event: FormEvent) => { event.preventDefault(); try { onCreated(await api.createEvent(match.id, draft)); } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar"); } };
   return <div className="modal-backdrop"><form className="modal compact" onSubmit={submit}>
     <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">ETIQUETA MANUAL</p><h2>Marcar momento</h2>
     <label>Tipo<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as EventType })}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <div className="time-grid">{(["start_seconds", "peak_seconds", "end_seconds"] as const).map((key) => <label key={key}>{key === "start_seconds" ? "Inicio" : key === "peak_seconds" ? "Momento" : "Final"}<input type="number" min="0" max={match.duration_seconds} value={draft[key]} onChange={(e) => setDraft({ ...draft, [key]: Number(e.target.value) })} /></label>)}</div>
+    <label>Momento clave (segundos)<input type="number" min="0" max={match.duration_seconds} value={draft.peak_seconds} onChange={(e) => updatePeak(Number(e.target.value))} /><small>Usamos el momento actual del reproductor. El clip incluirá contexto antes y después.</small></label>
+    <details className="advanced-options"><summary>Ajustar duración del clip</summary><p>Solo cambia estos valores si quieres más o menos contexto.</p><div className="time-grid">
+      <label>Inicio del clip<input type="number" min="0" max={draft.peak_seconds} value={draft.start_seconds} onChange={(e) => setDraft({ ...draft, start_seconds: Number(e.target.value) })} /></label>
+      <label>Final del clip<input type="number" min={draft.peak_seconds} max={match.duration_seconds} value={draft.end_seconds} onChange={(e) => setDraft({ ...draft, end_seconds: Number(e.target.value) })} /></label>
+    </div></details>
     <label>Notas<input value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Opcional" /></label>
     {error && <p className="form-error">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary">Guardar etiqueta</button></div>
   </form></div>;

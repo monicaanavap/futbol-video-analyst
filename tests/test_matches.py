@@ -11,8 +11,22 @@ class FakeVideoInspector:
         return VideoMetadata(duration_seconds=90, width=1920, height=1080, fps=30, codec="h264")
 
 
+class FakeClipExporter:
+    def export(self, source: Path, destination: Path, start: float, end: float) -> Path:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(f"{source.name}:{start}:{end}".encode())
+        return destination
+
+
 def make_client(tmp_path: Path) -> TestClient:
-    return TestClient(create_app(tmp_path / "test.sqlite3", FakeVideoInspector()))
+    return TestClient(
+        create_app(
+            tmp_path / "test.sqlite3",
+            FakeVideoInspector(),
+            clips_dir=tmp_path / "clips",
+            clip_exporter=FakeClipExporter(),
+        )
+    )
 
 
 def import_match(client: TestClient, tmp_path: Path) -> dict[str, object]:
@@ -67,3 +81,18 @@ def test_rejects_an_event_outside_the_video(tmp_path: Path) -> None:
         )
     assert response.status_code == 422
     assert response.json()["detail"] == "Event exceeds video duration"
+
+
+def test_exports_the_event_interval_as_a_clip(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        match_id = import_match(client, tmp_path)["id"]
+        event = client.post(
+            f"/matches/{match_id}/events",
+            json={"type": "corner", "start_seconds": 10, "peak_seconds": 15, "end_seconds": 25},
+        ).json()
+        response = client.post(f"/events/{event['id']}/clip")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "video/mp4"
+    assert response.headers["content-disposition"].startswith("attachment")
+    assert response.content.endswith(b":10.0:25.0")

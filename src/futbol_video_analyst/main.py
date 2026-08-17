@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from futbol_video_analyst.clips import ClipExportError, FFmpegClipExporter
 from futbol_video_analyst.config import settings
 from futbol_video_analyst.database import Database
 from futbol_video_analyst.domain import Event, EventCreate, EventType, Match, MatchImport
@@ -17,14 +18,18 @@ from futbol_video_analyst.video import FFprobeVideoInspector, VideoInspectionErr
 def create_app(
     database_path: Path | None = None,
     video_inspector: FFprobeVideoInspector | None = None,
+    clips_dir: Path | None = None,
+    clip_exporter: FFmpegClipExporter | None = None,
 ) -> FastAPI:
     database = Database(database_path or settings.database_path)
+    local_clips_dir = clips_dir or settings.clips_dir
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         database.initialize()
         application.state.database = database
         application.state.video_inspector = video_inspector or FFprobeVideoInspector()
+        application.state.clip_exporter = clip_exporter or FFmpegClipExporter()
         yield
 
     application = FastAPI(
@@ -45,6 +50,7 @@ def create_app(
         ],
         allow_methods=["GET", "POST", "DELETE", "PATCH"],
         allow_headers=["Content-Type"],
+        expose_headers=["Content-Disposition"],
     )
 
     @application.get("/health", tags=["system"])
@@ -111,6 +117,25 @@ def create_app(
         if request.app.state.database.get_match(match_id) is None:
             raise HTTPException(status_code=404, detail="Match not found")
         return request.app.state.database.list_events(match_id, event_type)
+
+    @application.post("/events/{event_id}/clip", response_class=FileResponse, tags=["clips"])
+    def export_event_clip(event_id: str, request: Request) -> FileResponse:
+        event = request.app.state.database.get_event(event_id)
+        if event is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+        match = request.app.state.database.get_match(event.match_id)
+        if match is None:
+            raise HTTPException(status_code=404, detail="Match not found")
+
+        filename = f"{event.type}-{int(event.peak_seconds):06d}-{event.id[:8]}.mp4"
+        destination = local_clips_dir / filename
+        try:
+            request.app.state.clip_exporter.export(
+                Path(match.video_path), destination, event.start_seconds, event.end_seconds
+            )
+        except ClipExportError as error:
+            raise HTTPException(status_code=500, detail=str(error)) from error
+        return FileResponse(destination, filename=filename, media_type="video/mp4")
 
     return application
 

@@ -69,6 +69,7 @@ El motor local ya permite:
 2. Guardar el partido en SQLite sin copiar ni subir el video.
 3. Crear etiquetas manuales ligadas a segundos del partido.
 4. Consultar todas las etiquetas o filtrarlas por tipo.
+5. Exportar bajo demanda un clip MP4 desde el inicio hasta el final de una etiqueta.
 
 Ejemplo para importar un partido:
 
@@ -82,7 +83,9 @@ curl -X POST http://127.0.0.1:8000/matches/import \
 ```
 
 La base local se crea en `data/futbol-video-analyst.sqlite3`. Los videos permanecen
-en su ubicación original.
+en su ubicación original. Los clips solicitados se generan en `data/clips`; por
+defecto incluyen cinco segundos antes y diez después del momento clave. La opción
+`Ajustar duración del clip` permite cambiar ese intervalo.
 
 ## Pruebas
 

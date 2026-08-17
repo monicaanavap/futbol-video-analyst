@@ -20,6 +20,11 @@ el proceso falla.
 El endpoint de video solo sirve rutas registradas previamente en SQLite. Esto
 permite reproducción y búsqueda temporal sin duplicar el archivo original.
 
+Los clips son derivados opcionales: FFmpeg recodifica únicamente el intervalo
+`start_seconds`–`end_seconds` cuando el usuario solicita una exportación. No se
+generan clips para todas las etiquetas automáticamente, evitando procesamiento y
+uso de disco innecesarios.
+
 ## Flujo de datos
 
 ```text
