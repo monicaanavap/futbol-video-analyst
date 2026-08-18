@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
-import type { AnalysisJob, EventDraft, EventType, Match, MatchEvent, VisualSignal } from "./types";
+import type { AnalysisJob, EventDraft, EventType, EventUpdate, Match, MatchEvent, VisualSignal } from "./types";
 
 const eventLabels: Record<EventType, string> = {
   corner: "Corners",
@@ -33,10 +33,13 @@ function App() {
   const [filters, setFilters] = useState<Set<EventType>>(new Set(Object.keys(eventLabels) as EventType[]));
   const [showImport, setShowImport] = useState(false);
   const [showEvent, setShowEvent] = useState(false);
+  const [showRejected, setShowRejected] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [exportingEvent, setExportingEvent] = useState<string | null>(null);
+  const [reviewingEvent, setReviewingEvent] = useState<string | null>(null);
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
   const [signals, setSignals] = useState<VisualSignal[]>([]);
   const [engineState, setEngineState] = useState<"starting" | "ready" | "error">("starting");
@@ -92,8 +95,8 @@ function App() {
   }, [analysisJob?.id, analysisJob?.status, selected]);
 
   const activeEvents = useMemo(
-    () => events.filter((event) => event.review_status !== "rejected"),
-    [events],
+    () => events.filter((event) => showRejected || event.review_status !== "rejected"),
+    [events, showRejected],
   );
   const visibleEvents = useMemo(
     () => activeEvents.filter((event) => filters.has(event.type)),
@@ -130,14 +133,31 @@ function App() {
     setError("");
     setNotice("");
     try {
-      const { blob, filename } = await api.exportClip(event.id);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-      setNotice(`Clip exportado: ${filename}`);
+      const nativeDesktop = "__TAURI_INTERNALS__" in window;
+      let destination: string | null = null;
+      if (nativeDesktop) {
+        const { save } = await import("@tauri-apps/plugin-dialog");
+        destination = await save({
+          defaultPath: `${event.type}-${String(Math.floor(event.peak_seconds)).padStart(6, "0")}.mp4`,
+          filters: [{ name: "Video MP4", extensions: ["mp4"] }],
+        });
+        if (!destination) return;
+      }
+      const { blob, filename, exportedPath } = await api.exportClip(event.id);
+      if (nativeDesktop && destination) {
+        if (!exportedPath) throw new Error("El motor no indicó dónde generó el clip");
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("save_generated_clip", { sourcePath: exportedPath, destinationPath: destination });
+        setNotice(`Clip guardado en: ${destination}`);
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setNotice(`Clip descargado: ${filename}`);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo exportar el clip");
     } finally {
@@ -147,13 +167,28 @@ function App() {
 
   const reviewEvent = async (event: MatchEvent, decision: "confirmed" | "rejected") => {
     setError("");
+    setReviewingEvent(event.id);
     try {
       const updated = await api.reviewEvent(event.id, decision);
       setEvents((current) => current.map((item) => item.id === updated.id ? updated : item));
       setNotice(decision === "confirmed" ? "Corner confirmado" : "Candidato descartado");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo guardar la revisión");
+    } finally {
+      setReviewingEvent(null);
     }
+  };
+
+  const handleEventUpdated = (updated: MatchEvent) => {
+    setEvents((current) => current.map((event) => event.id === updated.id ? updated : event));
+    setEditingEvent(null);
+    setNotice("Etiqueta actualizada");
+  };
+
+  const handleEventDeleted = (eventId: string) => {
+    setEvents((current) => current.filter((event) => event.id !== eventId));
+    setEditingEvent(null);
+    setNotice("Etiqueta eliminada");
   };
 
   const startAnalysis = async () => {
@@ -254,7 +289,7 @@ function App() {
               ))}
             </section>
             <section className="events-panel">
-              <div className="section-title"><h2>Momentos del partido</h2><span>{visibleEvents.length} etiquetas</span></div>
+              <div className="section-title"><h2>Momentos del partido</h2><div><span>{visibleEvents.length} etiquetas</span><button onClick={() => setShowRejected((value) => !value)}>{showRejected ? "Ocultar descartados" : `Ver descartados (${events.filter((event) => event.review_status === "rejected").length})`}</button></div></div>
               {visibleEvents.length === 0 ? (
                 <div className="no-events"><p>No hay etiquetas con estos filtros.</p><button onClick={() => setShowEvent(true)}>Agregar una manualmente</button></div>
               ) : visibleEvents.map((event) => (
@@ -263,16 +298,19 @@ function App() {
                     <span className="event-time">{formatTime(event.peak_seconds)}</span>
                     <i style={{ background: eventColors[event.type] }} />
                     <span><strong>{eventLabels[event.type]}</strong><small>{event.notes || "Etiqueta manual"}</small></span>
-                    <span className={`event-source ${event.review_status}`}>{event.source === "manual" ? "Manual" : event.review_status === "confirmed" ? "Confirmado" : `Candidato ${Math.round(event.confidence * 100)}%`}</span>
+                    <span className={`event-source ${event.review_status}`}>{event.source === "manual" ? "Manual" : event.review_status === "confirmed" ? "Confirmado" : event.review_status === "rejected" ? "Descartado" : `Candidato ${Math.round(event.confidence * 100)}%`}</span>
                     <span className="play-button">▶</span>
                   </button>
-                  {event.source === "detector" && event.review_status === "unreviewed" && <div className="review-actions">
-                    <button className="confirm-button" onClick={() => void reviewEvent(event, "confirmed")}>Confirmar</button>
-                    <button className="reject-button" onClick={() => void reviewEvent(event, "rejected")}>Descartar</button>
-                  </div>}
-                  <button className="clip-button" disabled={exportingEvent === event.id} onClick={() => void exportClip(event)}>
-                    {exportingEvent === event.id ? "Exportando…" : "Exportar clip"}
-                  </button>
+                  <div className="event-actions">
+                    {event.source === "detector" && event.review_status !== "confirmed" && <div className="review-actions">
+                      <button disabled={reviewingEvent === event.id} className="confirm-button" onClick={() => void reviewEvent(event, "confirmed")}>{reviewingEvent === event.id ? "Guardando…" : event.review_status === "rejected" ? "Restaurar y confirmar" : "Confirmar"}</button>
+                      {event.review_status === "unreviewed" && <button disabled={reviewingEvent === event.id} className="reject-button" onClick={() => void reviewEvent(event, "rejected")}>{reviewingEvent === event.id ? "Guardando…" : "Descartar"}</button>}
+                    </div>}
+                    <button className="edit-button" onClick={() => setEditingEvent(event)}>Editar</button>
+                    <button className="clip-button" disabled={exportingEvent === event.id} onClick={() => void exportClip(event)}>
+                      {exportingEvent === event.id ? "Exportando…" : "Exportar clip"}
+                    </button>
+                  </div>
                 </div>
               ))}
             </section>
@@ -281,8 +319,38 @@ function App() {
       </main>
       {showImport && <ImportDialog onClose={() => setShowImport(false)} onImported={handleImported} />}
       {showEvent && selected && <EventDialog match={selected} currentTime={videoRef.current?.currentTime ?? 0} onClose={() => setShowEvent(false)} onCreated={handleEventCreated} />}
+      {editingEvent && selected && <EditEventDialog match={selected} event={editingEvent} onClose={() => setEditingEvent(null)} onUpdated={handleEventUpdated} onDeleted={handleEventDeleted} />}
     </div>
   );
+}
+
+function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { match: Match; event: MatchEvent; onClose: () => void; onUpdated: (event: MatchEvent) => void; onDeleted: (eventId: string) => void }) {
+  const [draft, setDraft] = useState<EventUpdate>({ type: event.type, start_seconds: event.start_seconds, peak_seconds: event.peak_seconds, end_seconds: event.end_seconds, notes: event.notes ?? "" });
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submit = async (formEvent: FormEvent) => {
+    formEvent.preventDefault(); setSaving(true); setError("");
+    try { onUpdated(await api.updateEvent(event.id, draft)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo actualizar"); }
+    finally { setSaving(false); }
+  };
+  const remove = async () => {
+    if (!window.confirm("¿Eliminar esta etiqueta definitivamente?")) return;
+    setSaving(true); setError("");
+    try { await api.deleteEvent(event.id); onDeleted(event.id); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo eliminar"); setSaving(false); }
+  };
+  return <div className="modal-backdrop"><form className="modal compact" onSubmit={submit}>
+    <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">EDITAR ETIQUETA</p><h2>Corregir momento</h2>
+    <label>Tipo<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as EventType })}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Momento clave (segundos)<input type="number" min="0" max={match.duration_seconds} value={draft.peak_seconds} onChange={(e) => setDraft({ ...draft, peak_seconds: Number(e.target.value) })} /></label>
+    <details className="advanced-options"><summary>Ajustar duración del clip</summary><div className="time-grid">
+      <label>Inicio<input type="number" min="0" max={draft.peak_seconds} value={draft.start_seconds} onChange={(e) => setDraft({ ...draft, start_seconds: Number(e.target.value) })} /></label>
+      <label>Final<input type="number" min={draft.peak_seconds} max={match.duration_seconds} value={draft.end_seconds} onChange={(e) => setDraft({ ...draft, end_seconds: Number(e.target.value) })} /></label>
+    </div></details>
+    <label>Notas<input value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Opcional" /></label>
+    {error && <p className="form-error">{error}</p>}<div className="modal-actions split"><button type="button" className="danger-button" disabled={saving} onClick={() => void remove()}>Eliminar</button><span /><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></div>
+  </form></div>;
 }
 
 function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported: (match: Match) => void }) {

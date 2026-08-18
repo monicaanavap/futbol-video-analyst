@@ -53,6 +53,12 @@ de origen `detector` y estado `unreviewed`; la interfaz permite confirmarlas o
 descartarlas. Un análisis posterior reemplaza solamente propuestas no revisadas y
 respeta etiquetas manuales y decisiones humanas anteriores.
 
+La revisión admite corregir el tipo de evento (por ejemplo, convertir un corner
+candidato en tiro), notas e intervalo antes de confirmar, así como eliminar una
+etiqueta. Los descartes permanecen en SQLite para auditoría y pueden restaurarse.
+La exportación nativa limita la copia a archivos generados dentro de `data/clips`
+y exige un destino MP4 elegido mediante el diálogo de Tauri.
+
 ## Flujo de datos
 
 ```text

@@ -72,6 +72,7 @@ El motor local ya permite:
 5. Exportar bajo demanda un clip MP4 desde el inicio hasta el final de una etiqueta.
 6. Ejecutar un primer análisis visual local con progreso y señales por muestra.
 7. Proponer corners candidatos, confirmarlos o descartarlos desde la línea de tiempo.
+8. Editar tipo, momento, intervalo y notas de cualquier etiqueta, o eliminarla.
 
 Ejemplo para importar un partido:
 
@@ -100,6 +101,11 @@ El detector temporal de corners exige que coincidan campo visible, líneas blanc
 balón y varios jugadores en una toma estable. Agrupa señales cercanas para evitar
 etiquetas repetidas y muestra una confianza aproximada. Sigue siendo una heurística
 experimental: cada propuesta debe revisarse antes de considerarse un corner real.
+
+En la app de escritorio, `Exportar clip` abre el diálogo nativo para elegir nombre
+y destino y después muestra la ruta completa donde quedó guardado. En el navegador,
+el mismo botón conserva la descarga normal del navegador. Las etiquetas descartadas
+se pueden mostrar y restaurar si una decisión se tomó por error.
 
 ## Pruebas
 

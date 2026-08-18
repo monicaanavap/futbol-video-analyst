@@ -121,7 +121,35 @@ def test_exports_the_event_interval_as_a_clip(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "video/mp4"
     assert response.headers["content-disposition"].startswith("attachment")
+    assert response.headers["x-exported-path"].endswith(".mp4")
     assert response.content.endswith(b":10.0:25.0")
+
+
+def test_edits_and_deletes_an_event(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        match_id = import_match(client, tmp_path)["id"]
+        event = client.post(
+            f"/matches/{match_id}/events",
+            json={"type": "corner", "start_seconds": 10, "peak_seconds": 15, "end_seconds": 22},
+        ).json()
+        updated = client.patch(
+            f"/events/{event['id']}",
+            json={
+                "type": "shot",
+                "start_seconds": 11,
+                "peak_seconds": 16,
+                "end_seconds": 24,
+                "notes": "Era un tiro, no un corner",
+            },
+        )
+        deleted = client.delete(f"/events/{event['id']}")
+        missing = client.get(f"/matches/{match_id}/events")
+
+    assert updated.status_code == 200
+    assert updated.json()["type"] == "shot"
+    assert updated.json()["notes"] == "Era un tiro, no un corner"
+    assert deleted.status_code == 204
+    assert missing.json() == []
 
 
 def test_runs_visual_analysis_in_the_background(tmp_path: Path) -> None:

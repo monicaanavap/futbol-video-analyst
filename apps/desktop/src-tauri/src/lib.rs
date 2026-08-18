@@ -8,6 +8,27 @@ use std::{
 
 use tauri::Manager;
 
+#[tauri::command]
+fn save_generated_clip(source_path: String, destination_path: String) -> Result<(), String> {
+    let allowed_directory = repository_root()
+        .join("data/clips")
+        .canonicalize()
+        .map_err(|error| format!("No se encontró la carpeta de clips: {error}"))?;
+    let source = PathBuf::from(source_path)
+        .canonicalize()
+        .map_err(|error| format!("No se encontró el clip generado: {error}"))?;
+    if source.parent() != Some(allowed_directory.as_path()) {
+        return Err("Solo se pueden guardar clips generados por la aplicación".to_string());
+    }
+    let destination = PathBuf::from(destination_path);
+    if destination.extension().and_then(|value| value.to_str()) != Some("mp4") {
+        return Err("El destino debe ser un archivo MP4".to_string());
+    }
+    std::fs::copy(source, destination)
+        .map(|_| ())
+        .map_err(|error| format!("No se pudo guardar el clip: {error}"))
+}
+
 struct EngineProcess(Mutex<Option<Child>>);
 
 impl EngineProcess {
@@ -71,6 +92,7 @@ fn start_development_engine() -> std::io::Result<Child> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let application = tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![save_generated_clip])
         .manage(EngineProcess::start())
         .plugin(tauri_plugin_dialog::init())
         .build(tauri::generate_context!())

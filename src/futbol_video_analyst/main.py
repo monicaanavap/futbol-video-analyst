@@ -18,6 +18,7 @@ from futbol_video_analyst.domain import (
     EventCreate,
     EventReview,
     EventType,
+    EventUpdate,
     Match,
     MatchImport,
     VisualSignal,
@@ -64,7 +65,7 @@ def create_app(
         ],
         allow_methods=["GET", "POST", "DELETE", "PATCH"],
         allow_headers=["Content-Type"],
-        expose_headers=["Content-Disposition"],
+        expose_headers=["Content-Disposition", "X-Exported-Path"],
     )
 
     @application.get("/health", tags=["system"])
@@ -139,6 +140,25 @@ def create_app(
             raise HTTPException(status_code=404, detail="Event not found")
         return event
 
+    @application.patch("/events/{event_id}", response_model=Event, tags=["events"])
+    def update_event(event_id: str, payload: EventUpdate, request: Request) -> Event:
+        existing = request.app.state.database.get_event(event_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+        match = request.app.state.database.get_match(existing.match_id)
+        if match is None:
+            raise HTTPException(status_code=404, detail="Match not found")
+        if payload.end_seconds > match.duration_seconds:
+            raise HTTPException(status_code=422, detail="Event exceeds video duration")
+        event = request.app.state.database.update_event(event_id, payload)
+        assert event is not None
+        return event
+
+    @application.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_event(event_id: str, request: Request) -> None:
+        if not request.app.state.database.delete_event(event_id):
+            raise HTTPException(status_code=404, detail="Event not found")
+
     @application.post("/events/{event_id}/clip", response_class=FileResponse, tags=["clips"])
     def export_event_clip(event_id: str, request: Request) -> FileResponse:
         event = request.app.state.database.get_event(event_id)
@@ -156,7 +176,12 @@ def create_app(
             )
         except ClipExportError as error:
             raise HTTPException(status_code=500, detail=str(error)) from error
-        return FileResponse(destination, filename=filename, media_type="video/mp4")
+        return FileResponse(
+            destination,
+            filename=filename,
+            media_type="video/mp4",
+            headers={"X-Exported-Path": str(destination.resolve())},
+        )
 
     @application.post(
         "/matches/{match_id}/analysis",

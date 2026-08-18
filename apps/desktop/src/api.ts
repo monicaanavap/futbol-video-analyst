@@ -1,4 +1,4 @@
-import type { AnalysisJob, EventDraft, Match, MatchEvent, VisualSignal } from "./types";
+import type { AnalysisJob, EventDraft, EventUpdate, Match, MatchEvent, VisualSignal } from "./types";
 
 export const API_URL = "http://127.0.0.1:8000";
 
@@ -34,6 +34,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify(event),
     }),
+  updateEvent: (eventId: string, event: EventUpdate) =>
+    request<MatchEvent>(`/events/${eventId}`, {
+      method: "PATCH",
+      body: JSON.stringify(event),
+    }),
+  deleteEvent: async (eventId: string) => {
+    const response = await fetch(`${API_URL}/events/${eventId}`, { method: "DELETE" });
+    if (!response.ok) throw new Error("No se pudo eliminar la etiqueta");
+  },
   exportClip: async (eventId: string) => {
     const response = await fetch(`${API_URL}/events/${eventId}/clip`, { method: "POST" });
     if (!response.ok) {
@@ -42,7 +51,8 @@ export const api = {
     }
     const disposition = response.headers.get("Content-Disposition") ?? "";
     const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] ?? `clip-${eventId}.mp4`;
-    return { blob: await response.blob(), filename };
+    const exportedPath = response.headers.get("X-Exported-Path");
+    return { blob: await response.blob(), filename, exportedPath };
   },
   startAnalysis: (matchId: string) =>
     request<AnalysisJob>(`/matches/${matchId}/analysis`, { method: "POST" }),

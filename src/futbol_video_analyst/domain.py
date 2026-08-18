@@ -86,6 +86,20 @@ class EventCreate(BaseModel):
         return self
 
 
+class EventUpdate(BaseModel):
+    type: EventType
+    start_seconds: float = Field(ge=0)
+    peak_seconds: float = Field(ge=0)
+    end_seconds: float = Field(ge=0)
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @model_validator(mode="after")
+    def validate_timeline(self) -> "EventUpdate":
+        if not self.start_seconds <= self.peak_seconds <= self.end_seconds:
+            raise ValueError("start_seconds <= peak_seconds <= end_seconds is required")
+        return self
+
+
 class Event(EventCreate):
     id: str
     match_id: str

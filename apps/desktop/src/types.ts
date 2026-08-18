@@ -37,6 +37,14 @@ export interface EventDraft {
   notes: string;
 }
 
+export interface EventUpdate {
+  type: EventType;
+  start_seconds: number;
+  peak_seconds: number;
+  end_seconds: number;
+  notes: string;
+}
+
 export interface AnalysisJob {
   id: string;
   match_id: string;
