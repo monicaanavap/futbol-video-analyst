@@ -306,7 +306,7 @@ function App() {
                       <button disabled={reviewingEvent === event.id} className="confirm-button" onClick={() => void reviewEvent(event, "confirmed")}>{reviewingEvent === event.id ? "Guardando…" : event.review_status === "rejected" ? "Restaurar y confirmar" : "Confirmar"}</button>
                       {event.review_status === "unreviewed" && <button disabled={reviewingEvent === event.id} className="reject-button" onClick={() => void reviewEvent(event, "rejected")}>{reviewingEvent === event.id ? "Guardando…" : "Descartar"}</button>}
                     </div>}
-                    <button className="edit-button" onClick={() => setEditingEvent(event)}>Editar</button>
+                    {event.review_status !== "rejected" && <button className="edit-button" onClick={() => setEditingEvent(event)}>Editar</button>}
                     <button className="clip-button" disabled={exportingEvent === event.id} onClick={() => void exportClip(event)}>
                       {exportingEvent === event.id ? "Exportando…" : "Exportar clip"}
                     </button>
