@@ -153,6 +153,10 @@ function App() {
 
   const fieldSamples = signals.filter((signal) => signal.likely_field).length;
   const strongChanges = signals.filter((signal) => signal.change_score >= 0.18).length;
+  const averagePlayers = signals.length
+    ? Math.round(signals.reduce((total, signal) => total + signal.player_candidates, 0) / signals.length)
+    : 0;
+  const ballSamples = signals.filter((signal) => signal.ball_candidates > 0).length;
 
   return (
     <div className="app-shell">
@@ -216,10 +220,12 @@ function App() {
               <div className="analysis-copy">
                 <span className="analysis-icon">◎</span>
                 <div><strong>{analysisJob.status === "completed" ? "Análisis visual listo" : analysisJob.status === "failed" ? "No se pudo analizar" : "Analizando el partido"}</strong>
-                <small>{analysisJob.status === "completed" ? `${signals.length} muestras revisadas localmente` : analysisJob.stage === "sampling" ? "Revisando campo, luz y cambios de cámara…" : "Preparando el video…"}</small></div>
+                <small>{analysisJob.status === "completed" ? `${signals.length} muestras · objetos mostrados como candidatos experimentales` : analysisJob.stage === "sampling" ? "Revisando campo, luz, jugadores y balón…" : "Preparando el video…"}</small></div>
               </div>
               {analysisJob.status === "completed" ? <div className="analysis-metrics">
                 <span><b>{fieldSamples}</b>campo visible</span><span><b>{strongChanges}</b>cambios fuertes</span>
+                <span title="Promedio por muestra; puede incluir falsos positivos"><b>{averagePlayers}</b>jugadores candidatos</span>
+                <span title="Muestras donde apareció al menos un candidato"><b>{ballSamples}</b>balón candidato</span>
               </div> : <div className="progress-wrap"><span>{Math.round(analysisJob.progress * 100)}%</span><div className="progress-track"><i style={{ width: `${analysisJob.progress * 100}%` }} /></div><small>{analysisJob.samples_processed} muestras</small></div>}
             </section>}
             <section className="filters">

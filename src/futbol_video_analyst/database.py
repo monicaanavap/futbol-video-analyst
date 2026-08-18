@@ -66,7 +66,10 @@ CREATE TABLE IF NOT EXISTS visual_signals (
     green_ratio REAL NOT NULL,
     brightness REAL NOT NULL,
     change_score REAL NOT NULL,
-    likely_field INTEGER NOT NULL
+    likely_field INTEGER NOT NULL,
+    player_candidates INTEGER NOT NULL DEFAULT 0,
+    ball_candidates INTEGER NOT NULL DEFAULT 0,
+    line_ratio REAL NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS visual_signals_match_time_idx
@@ -82,6 +85,20 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            existing_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(visual_signals)").fetchall()
+            }
+            migrations = {
+                "player_candidates": "INTEGER NOT NULL DEFAULT 0",
+                "ball_candidates": "INTEGER NOT NULL DEFAULT 0",
+                "line_ratio": "REAL NOT NULL DEFAULT 0",
+            }
+            for column, definition in migrations.items():
+                if column not in existing_columns:
+                    connection.execute(
+                        f"ALTER TABLE visual_signals ADD COLUMN {column} {definition}"
+                    )
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
@@ -232,8 +249,9 @@ class Database:
                 """
                 INSERT INTO visual_signals (
                     id, match_id, timestamp_seconds, green_ratio,
-                    brightness, change_score, likely_field
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    brightness, change_score, likely_field, player_candidates,
+                    ball_candidates, line_ratio
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
@@ -244,6 +262,9 @@ class Database:
                         signal.brightness,
                         signal.change_score,
                         int(signal.likely_field),
+                        signal.player_candidates,
+                        signal.ball_candidates,
+                        signal.line_ratio,
                     )
                     for signal in signals
                 ],

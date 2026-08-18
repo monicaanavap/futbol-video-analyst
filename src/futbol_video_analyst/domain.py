@@ -113,3 +113,6 @@ class VisualSignal(BaseModel):
     brightness: float = Field(ge=0, le=1)
     change_score: float = Field(ge=0, le=1)
     likely_field: bool
+    player_candidates: int = Field(default=0, ge=0)
+    ball_candidates: int = Field(default=0, ge=0)
+    line_ratio: float = Field(default=0, ge=0, le=1)

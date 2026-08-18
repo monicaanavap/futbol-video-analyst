@@ -35,10 +35,14 @@ cada dos segundos, reduce su tamaño y calcula:
 - luminosidad media;
 - diferencia visual respecto a la muestra anterior;
 - una clasificación preliminar de campo visible.
+- candidatos a jugadores mediante componentes verticales no verdes;
+- candidatos a balón mediante regiones blancas pequeñas y circulares;
+- proporción de líneas o regiones blancas.
 
 Las señales se guardan con su timestamp y pueden recuperarse después de cerrar la
-aplicación. Esta etapa no crea etiquetas automáticas todavía; el siguiente detector
-combinará estas señales con balón, jugadores y geometría del campo.
+aplicación. Los candidatos usan heurísticas abiertas y pueden producir falsos
+positivos; no crean etiquetas automáticas todavía. El siguiente detector combinará
+estas señales a lo largo del tiempo con geometría del campo.
 
 ## Flujo de datos
 

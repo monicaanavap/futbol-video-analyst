@@ -89,9 +89,11 @@ defecto incluyen cinco segundos antes y diez después del momento clave. La opci
 `Ajustar duración del clip` permite cambiar ese intervalo.
 
 El botón `Analizar partido` toma una muestra cada dos segundos y calcula, con
-OpenCV, proporción de verde, luminosidad y cambio visual. Estos valores todavía
-no representan eventos: son las señales base para construir y evaluar el detector
-automático de corners.
+OpenCV, proporción de verde, luminosidad, cambio visual, líneas blancas y candidatos
+a jugadores y balón. Los objetos son estimaciones geométricas experimentales, no
+detecciones confirmadas: pueden contener falsos positivos y todavía no representan
+eventos. Son las señales base para construir y evaluar el detector automático de
+corners.
 
 ## Pruebas
 

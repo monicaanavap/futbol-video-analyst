@@ -57,4 +57,7 @@ export interface VisualSignal {
   brightness: number;
   change_score: number;
   likely_field: boolean;
+  player_candidates: number;
+  ball_candidates: number;
+  line_ratio: number;
 }

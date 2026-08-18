@@ -21,6 +21,49 @@ class VideoAnalysisError(RuntimeError):
     pass
 
 
+def detect_object_candidates(sample, hsv, green_mask) -> tuple[int, int, float]:
+    """Estimate visible field objects without a trained model.
+
+    These counts are intentionally candidates: camera graphics, uniforms and field
+    markings can still cause false positives.
+    """
+    sample_area = sample.shape[0] * sample.shape[1]
+    green_ratio = cv2.countNonZero(green_mask) / green_mask.size
+    if green_ratio < 0.18:
+        return 0, 0, 0.0
+
+    white_mask = cv2.inRange(hsv, (0, 0, 155), (180, 85, 255))
+    line_ratio = cv2.countNonZero(white_mask) / white_mask.size
+
+    saturated_mask = cv2.inRange(hsv, (0, 70, 35), (180, 255, 255))
+    player_mask = cv2.bitwise_and(cv2.bitwise_not(green_mask), saturated_mask)
+    player_mask = cv2.morphologyEx(
+        player_mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    )
+    player_candidates = 0
+    for contour in cv2.findContours(player_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]:
+        area_ratio = cv2.contourArea(contour) / sample_area
+        _, _, width, height = cv2.boundingRect(contour)
+        if 0.0002 <= area_ratio <= 0.015 and height >= width * 1.15 and height >= 6:
+            player_candidates += 1
+
+    ball_mask = cv2.morphologyEx(
+        white_mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    )
+    ball_candidates = 0
+    for contour in cv2.findContours(ball_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]:
+        area = cv2.contourArea(contour)
+        area_ratio = area / sample_area
+        _, _, width, height = cv2.boundingRect(contour)
+        perimeter = cv2.arcLength(contour, True)
+        circularity = 4 * math.pi * area / (perimeter * perimeter) if perimeter else 0
+        aspect_ratio = width / height if height else 0
+        if 0.00002 <= area_ratio <= 0.0015 and 0.6 <= aspect_ratio <= 1.65 and circularity >= 0.45:
+            ball_candidates += 1
+
+    return player_candidates, ball_candidates, line_ratio
+
+
 class VisualSignalAnalyzer:
     def __init__(self, sample_interval_seconds: float = 2.0) -> None:
         self.sample_interval_seconds = sample_interval_seconds
@@ -50,6 +93,9 @@ class VisualSignalAnalyzer:
                 hsv = cv2.cvtColor(sample, cv2.COLOR_BGR2HSV)
                 green_mask = cv2.inRange(hsv, (30, 35, 30), (95, 255, 255))
                 green_ratio = cv2.countNonZero(green_mask) / green_mask.size
+                player_candidates, ball_candidates, line_ratio = detect_object_candidates(
+                    sample, hsv, green_mask
+                )
 
                 gray = cv2.cvtColor(sample, cv2.COLOR_BGR2GRAY)
                 brightness = float(gray.mean() / 255)
@@ -67,6 +113,9 @@ class VisualSignalAnalyzer:
                         brightness=brightness,
                         change_score=min(change_score, 1.0),
                         likely_field=green_ratio >= 0.18,
+                        player_candidates=player_candidates,
+                        ball_candidates=ball_candidates,
+                        line_ratio=line_ratio,
                     )
                 )
                 on_progress((index + 1) / total_samples, len(signals))
