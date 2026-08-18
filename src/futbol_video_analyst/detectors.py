@@ -1,4 +1,93 @@
+import cv2
+
 from futbol_video_analyst.domain import EventCreate, EventSource, EventType, Match, VisualSignal
+
+
+def select_motion_timestamp(
+    coarse_timestamp: float, observations: list[tuple[float, float, float]]
+) -> float:
+    """Select a likely restart from (timestamp, motion, green_ratio) observations."""
+    usable = [
+        observation
+        for observation in observations
+        if observation[2] >= 0.18 and 0.012 <= observation[1] <= 0.22
+    ]
+    if not usable:
+        return coarse_timestamp
+    return max(usable, key=lambda observation: observation[1])[0]
+
+
+class CornerTimestampRefiner:
+    sample_interval_seconds = 0.5
+    seconds_before = 8.0
+    seconds_after = 4.0
+    estimated_kick_delay_seconds = 2.0
+
+    def refine(self, match: Match, candidates: list[EventCreate]) -> list[EventCreate]:
+        if not candidates:
+            return []
+        capture = cv2.VideoCapture(match.video_path)
+        if not capture.isOpened():
+            return candidates
+        refined: list[EventCreate] = []
+        try:
+            for candidate in candidates:
+                observations = self._motion_observations(capture, match, candidate.peak_seconds)
+                motion_timestamp = select_motion_timestamp(candidate.peak_seconds, observations)
+                timestamp = motion_timestamp
+                if motion_timestamp != candidate.peak_seconds:
+                    timestamp = min(
+                        match.duration_seconds, motion_timestamp + self.estimated_kick_delay_seconds
+                    )
+                refined.append(
+                    candidate.model_copy(
+                        update={
+                            "start_seconds": max(0, timestamp - 8),
+                            "peak_seconds": timestamp,
+                            "end_seconds": min(match.duration_seconds, timestamp + 12),
+                            "notes": (
+                                "Candidato automático con momento afinado: balón, jugadores, "
+                                "líneas y cambio de movimiento"
+                            ),
+                        }
+                    )
+                )
+        finally:
+            capture.release()
+        return refined
+
+    def _motion_observations(
+        self, capture: cv2.VideoCapture, match: Match, coarse_timestamp: float
+    ) -> list[tuple[float, float, float]]:
+        start = max(0, coarse_timestamp - self.seconds_before)
+        end = min(match.duration_seconds - 0.001, coarse_timestamp + self.seconds_after)
+        capture.set(cv2.CAP_PROP_POS_MSEC, start * 1000)
+        next_sample_timestamp = start
+        previous_gray = None
+        observations: list[tuple[float, float, float]] = []
+        while True:
+            success, frame = capture.read()
+            if not success:
+                break
+            timestamp = capture.get(cv2.CAP_PROP_POS_MSEC) / 1000
+            if timestamp > end:
+                break
+            if timestamp + 0.001 < next_sample_timestamp:
+                continue
+            height, width = frame.shape[:2]
+            target_width = min(384, width)
+            target_height = max(1, round(height * target_width / width))
+            sample = cv2.resize(frame, (target_width, target_height))
+            hsv = cv2.cvtColor(sample, cv2.COLOR_BGR2HSV)
+            green_mask = cv2.inRange(hsv, (30, 35, 30), (95, 255, 255))
+            green_ratio = cv2.countNonZero(green_mask) / green_mask.size
+            gray = cv2.cvtColor(sample, cv2.COLOR_BGR2GRAY)
+            if previous_gray is not None:
+                motion = float(cv2.absdiff(gray, previous_gray).mean() / 255)
+                observations.append((timestamp, motion, green_ratio))
+            previous_gray = gray
+            next_sample_timestamp += self.sample_interval_seconds
+        return observations
 
 
 class CornerCandidateDetector:

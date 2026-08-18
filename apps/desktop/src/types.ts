@@ -49,7 +49,7 @@ export interface AnalysisJob {
   id: string;
   match_id: string;
   status: "queued" | "running" | "completed" | "failed";
-  stage: "queued" | "sampling" | "completed" | "failed";
+  stage: "queued" | "sampling" | "refining" | "completed" | "failed";
   progress: number;
   samples_processed: number;
   error: string | null;

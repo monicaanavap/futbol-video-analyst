@@ -101,6 +101,8 @@ El detector temporal de corners exige que coincidan campo visible, líneas blanc
 balón y varios jugadores en una toma estable. Agrupa señales cercanas para evitar
 etiquetas repetidas y muestra una confianza aproximada. Sigue siendo una heurística
 experimental: cada propuesta debe revisarse antes de considerarse un corner real.
+Después de encontrar una zona candidata, una segunda pasada revisa el intervalo
+cada medio segundo y coloca el momento en el cambio de movimiento más probable.
 
 En la app de escritorio, `Exportar clip` abre el diálogo nativo para elegir nombre
 y destino y después muestra la ruta completa donde quedó guardado. En el navegador,

@@ -40,6 +40,7 @@ class AnalysisStatus(StrEnum):
 class AnalysisStage(StrEnum):
     QUEUED = "queued"
     SAMPLING = "sampling"
+    REFINING = "refining"
     COMPLETED = "completed"
     FAILED = "failed"
 

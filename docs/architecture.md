@@ -53,6 +53,13 @@ de origen `detector` y estado `unreviewed`; la interfaz permite confirmarlas o
 descartarlas. Un análisis posterior reemplaza solamente propuestas no revisadas y
 respeta etiquetas manuales y decisiones humanas anteriores.
 
+Antes de guardar una propuesta, una segunda pasada muestrea el intervalo cercano
+cada 500 ms. Descarta cortes de cámara y tomas sin campo, y usa el cambio visual
+más fuerte restante como instante probable del saque. Si no encuentra movimiento
+confiable conserva el timestamp aproximado original. Por ahora aplica dos segundos
+entre el inicio de movimiento y el contacto probable con el balón, calibrados con
+el primer corner real revisado (`7:13` de movimiento, `7:15` de saque).
+
 La revisión admite corregir el tipo de evento (por ejemplo, convertir un corner
 candidato en tiro), notas e intervalo antes de confirmar, así como eliminar una
 etiqueta. Los descartes permanecen en SQLite para auditoría y pueden restaurarse.

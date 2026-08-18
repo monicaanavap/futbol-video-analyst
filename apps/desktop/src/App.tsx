@@ -271,7 +271,7 @@ function App() {
               <div className="analysis-copy">
                 <span className="analysis-icon">◎</span>
                 <div><strong>{analysisJob.status === "completed" ? "Análisis visual listo" : analysisJob.status === "failed" ? "No se pudo analizar" : "Analizando el partido"}</strong>
-                <small>{analysisJob.status === "completed" ? `${signals.length} muestras · objetos mostrados como candidatos experimentales` : analysisJob.stage === "sampling" ? "Revisando campo, luz, jugadores y balón…" : "Preparando el video…"}</small></div>
+                <small>{analysisJob.status === "completed" ? `${signals.length} muestras · objetos mostrados como candidatos experimentales` : analysisJob.stage === "sampling" ? "Revisando campo, luz, jugadores y balón…" : analysisJob.stage === "refining" ? "Afinando el segundo exacto de cada candidato…" : "Preparando el video…"}</small></div>
               </div>
               {analysisJob.status === "completed" ? <div className="analysis-metrics">
                 <span><b>{fieldSamples}</b>campo visible</span><span><b>{strongChanges}</b>cambios fuertes</span>

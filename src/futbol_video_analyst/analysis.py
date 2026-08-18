@@ -6,7 +6,7 @@ from uuid import uuid4
 import cv2
 
 from futbol_video_analyst.database import Database
-from futbol_video_analyst.detectors import CornerCandidateDetector
+from futbol_video_analyst.detectors import CornerCandidateDetector, CornerTimestampRefiner
 from futbol_video_analyst.domain import (
     AnalysisJob,
     AnalysisStage,
@@ -133,6 +133,7 @@ class AnalysisCoordinator:
         self.database = database
         self.analyzer = analyzer or VisualSignalAnalyzer()
         self.corner_detector = CornerCandidateDetector()
+        self.corner_refiner = CornerTimestampRefiner()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="video-analysis")
 
     def start(self, match: Match) -> AnalysisJob:
@@ -153,7 +154,7 @@ class AnalysisCoordinator:
                 job_id,
                 status=AnalysisStatus.RUNNING,
                 stage=AnalysisStage.SAMPLING,
-                progress=progress,
+                progress=progress * 0.9,
                 samples_processed=samples,
             )
 
@@ -167,9 +168,16 @@ class AnalysisCoordinator:
             )
             signals = self.analyzer.analyze(match, report)
             self.database.replace_visual_signals(match.id, signals)
-            self.database.replace_corner_candidates(
-                match.id, self.corner_detector.detect(match, signals)
+            candidates = self.corner_detector.detect(match, signals)
+            self.database.update_analysis_job(
+                job_id,
+                status=AnalysisStatus.RUNNING,
+                stage=AnalysisStage.REFINING,
+                progress=0.92,
+                samples_processed=len(signals),
             )
+            refined_candidates = self.corner_refiner.refine(match, candidates)
+            self.database.replace_corner_candidates(match.id, refined_candidates)
             self.database.update_analysis_job(
                 job_id,
                 status=AnalysisStatus.COMPLETED,

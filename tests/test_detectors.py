@@ -1,4 +1,4 @@
-from futbol_video_analyst.detectors import CornerCandidateDetector
+from futbol_video_analyst.detectors import CornerCandidateDetector, select_motion_timestamp
 from futbol_video_analyst.domain import Match, MatchStatus, VisualSignal
 
 
@@ -48,3 +48,21 @@ def test_requires_ball_players_and_lines() -> None:
     )
 
     assert candidates == []
+
+
+def test_refines_coarse_timestamp_to_strongest_field_motion() -> None:
+    timestamp = select_motion_timestamp(
+        440,
+        [
+            (434.5, 0.018, 0.7),
+            (435.0, 0.075, 0.68),
+            (436.0, 0.03, 0.7),
+            (438.0, 0.4, 0.1),
+        ],
+    )
+
+    assert timestamp == 435.0
+
+
+def test_keeps_coarse_timestamp_without_usable_motion() -> None:
+    assert select_motion_timestamp(440, [(435.0, 0.004, 0.7)]) == 440
