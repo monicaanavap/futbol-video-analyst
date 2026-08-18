@@ -41,8 +41,17 @@ cada dos segundos, reduce su tamaño y calcula:
 
 Las señales se guardan con su timestamp y pueden recuperarse después de cerrar la
 aplicación. Los candidatos usan heurísticas abiertas y pueden producir falsos
-positivos; no crean etiquetas automáticas todavía. El siguiente detector combinará
-estas señales a lo largo del tiempo con geometría del campo.
+positivos. El detector temporal combina estas señales para proponer etiquetas que
+siempre requieren revisión humana.
+
+## Detector temporal de corners
+
+La primera regla temporal propone un corner cuando una muestra estable combina
+campo visible, líneas, balón y concentración mínima de jugadores. Las propuestas
+cercanas se agrupan y se conserva la de mayor confianza. Se guardan como eventos
+de origen `detector` y estado `unreviewed`; la interfaz permite confirmarlas o
+descartarlas. Un análisis posterior reemplaza solamente propuestas no revisadas y
+respeta etiquetas manuales y decisiones humanas anteriores.
 
 ## Flujo de datos
 

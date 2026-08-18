@@ -6,6 +6,7 @@ from uuid import uuid4
 import cv2
 
 from futbol_video_analyst.database import Database
+from futbol_video_analyst.detectors import CornerCandidateDetector
 from futbol_video_analyst.domain import (
     AnalysisJob,
     AnalysisStage,
@@ -131,6 +132,7 @@ class AnalysisCoordinator:
     def __init__(self, database: Database, analyzer: VisualSignalAnalyzer | None = None) -> None:
         self.database = database
         self.analyzer = analyzer or VisualSignalAnalyzer()
+        self.corner_detector = CornerCandidateDetector()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="video-analysis")
 
     def start(self, match: Match) -> AnalysisJob:
@@ -165,6 +167,9 @@ class AnalysisCoordinator:
             )
             signals = self.analyzer.analyze(match, report)
             self.database.replace_visual_signals(match.id, signals)
+            self.database.replace_corner_candidates(
+                match.id, self.corner_detector.detect(match, signals)
+            )
             self.database.update_analysis_job(
                 job_id,
                 status=AnalysisStatus.COMPLETED,

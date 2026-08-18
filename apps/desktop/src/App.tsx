@@ -82,7 +82,8 @@ function App() {
         setAnalysisJob(job);
         if (job.status === "completed" && selected) {
           setSignals(await api.listSignals(selected.id));
-          setNotice("Análisis visual completado");
+          setEvents(await api.listEvents(selected.id));
+          setNotice("Análisis completado; revisa los corners candidatos");
         }
         if (job.status === "failed") setError(job.error ?? "El análisis no pudo completarse");
       });
@@ -90,9 +91,13 @@ function App() {
     return () => window.clearInterval(timer);
   }, [analysisJob?.id, analysisJob?.status, selected]);
 
+  const activeEvents = useMemo(
+    () => events.filter((event) => event.review_status !== "rejected"),
+    [events],
+  );
   const visibleEvents = useMemo(
-    () => events.filter((event) => filters.has(event.type)),
-    [events, filters],
+    () => activeEvents.filter((event) => filters.has(event.type)),
+    [activeEvents, filters],
   );
 
   const seek = (seconds: number) => {
@@ -137,6 +142,17 @@ function App() {
       setError(reason instanceof Error ? reason.message : "No se pudo exportar el clip");
     } finally {
       setExportingEvent(null);
+    }
+  };
+
+  const reviewEvent = async (event: MatchEvent, decision: "confirmed" | "rejected") => {
+    setError("");
+    try {
+      const updated = await api.reviewEvent(event.id, decision);
+      setEvents((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setNotice(decision === "confirmed" ? "Corner confirmado" : "Candidato descartado");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo guardar la revisión");
     }
   };
 
@@ -233,7 +249,7 @@ function App() {
               {(Object.keys(eventLabels) as EventType[]).map((type) => (
                 <button className={filters.has(type) ? "filter active" : "filter"} key={type} onClick={() => toggleFilter(type)}>
                   <i style={{ background: eventColors[type] }} />{eventLabels[type]}
-                  <b>{events.filter((event) => event.type === type).length}</b>
+                  <b>{activeEvents.filter((event) => event.type === type).length}</b>
                 </button>
               ))}
             </section>
@@ -247,9 +263,13 @@ function App() {
                     <span className="event-time">{formatTime(event.peak_seconds)}</span>
                     <i style={{ background: eventColors[event.type] }} />
                     <span><strong>{eventLabels[event.type]}</strong><small>{event.notes || "Etiqueta manual"}</small></span>
-                    <span className="event-source">{event.source === "manual" ? "Manual" : `${Math.round(event.confidence * 100)}%`}</span>
+                    <span className={`event-source ${event.review_status}`}>{event.source === "manual" ? "Manual" : event.review_status === "confirmed" ? "Confirmado" : `Candidato ${Math.round(event.confidence * 100)}%`}</span>
                     <span className="play-button">▶</span>
                   </button>
+                  {event.source === "detector" && event.review_status === "unreviewed" && <div className="review-actions">
+                    <button className="confirm-button" onClick={() => void reviewEvent(event, "confirmed")}>Confirmar</button>
+                    <button className="reject-button" onClick={() => void reviewEvent(event, "rejected")}>Descartar</button>
+                  </div>}
                   <button className="clip-button" disabled={exportingEvent === event.id} onClick={() => void exportClip(event)}>
                     {exportingEvent === event.id ? "Exportando…" : "Exportar clip"}
                   </button>

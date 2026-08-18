@@ -36,6 +36,9 @@ class FakeVisualAnalyzer:
                 brightness=0.5,
                 change_score=0.14,
                 likely_field=True,
+                player_candidates=4,
+                ball_candidates=1,
+                line_ratio=0.02,
             )
         ]
 
@@ -136,8 +139,33 @@ def test_runs_visual_analysis_in_the_background(tmp_path: Path) -> None:
             time.sleep(0.01)
 
         signals = client.get(f"/matches/{match_id}/signals")
+        events = client.get(f"/matches/{match_id}/events")
 
     assert job["status"] == "completed"
     assert job["progress"] == 1
     assert job["samples_processed"] == 1
     assert signals.json()[0]["likely_field"] is True
+    assert events.json()[0]["type"] == "corner"
+    assert events.json()[0]["source"] == "detector"
+
+
+def test_confirms_and_rejects_detector_candidates(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        match_id = import_match(client, tmp_path)["id"]
+        created = client.post(
+            f"/matches/{match_id}/events",
+            json={
+                "type": "corner",
+                "start_seconds": 10,
+                "peak_seconds": 15,
+                "end_seconds": 22,
+                "source": "detector",
+                "confidence": 0.7,
+            },
+        ).json()
+        confirmed = client.patch(
+            f"/events/{created['id']}/review", json={"review_status": "confirmed"}
+        )
+
+    assert confirmed.status_code == 200
+    assert confirmed.json()["review_status"] == "confirmed"

@@ -22,7 +22,7 @@ export interface MatchEvent {
   end_seconds: number;
   confidence: number;
   source: "manual" | "detector";
-  review_status: string;
+  review_status: "unreviewed" | "confirmed" | "rejected";
   notes: string | null;
   created_at: string;
 }

@@ -23,6 +23,12 @@ export const api = {
       body: JSON.stringify({ title, video_path: videoPath }),
     }),
   listEvents: (matchId: string) => request<MatchEvent[]>(`/matches/${matchId}/events`),
+  reviewEvent: (eventId: string, reviewStatus: "confirmed" | "rejected") =>
+    request<MatchEvent>(`/events/${eventId}/review`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ review_status: reviewStatus }),
+    }),
   createEvent: (matchId: string, event: EventDraft) =>
     request<MatchEvent>(`/matches/${matchId}/events`, {
       method: "POST",

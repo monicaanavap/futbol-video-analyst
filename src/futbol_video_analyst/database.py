@@ -10,6 +10,8 @@ from futbol_video_analyst.domain import (
     AnalysisStatus,
     Event,
     EventCreate,
+    EventSource,
+    EventType,
     Match,
     MatchStatus,
     ReviewStatus,
@@ -188,6 +190,73 @@ class Database:
         with self.connect() as connection:
             rows = connection.execute(query, parameters).fetchall()
         return [Event.model_validate(dict(row)) for row in rows]
+
+    def review_event(self, event_id: str, review_status: ReviewStatus) -> Event | None:
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE events SET review_status = ? WHERE id = ?", (review_status, event_id)
+            )
+        return self.get_event(event_id)
+
+    def replace_corner_candidates(
+        self, match_id: str, candidates: list[EventCreate]
+    ) -> list[Event]:
+        with self.connect() as connection:
+            protected_peaks = [
+                row["peak_seconds"]
+                for row in connection.execute(
+                    """
+                    SELECT peak_seconds FROM events
+                    WHERE match_id = ? AND type = ?
+                      AND (source = ? OR review_status != ?)
+                    """,
+                    (
+                        match_id,
+                        EventType.CORNER,
+                        EventSource.MANUAL,
+                        ReviewStatus.UNREVIEWED,
+                    ),
+                ).fetchall()
+            ]
+            connection.execute(
+                """
+                DELETE FROM events WHERE match_id = ? AND type = ? AND source = ?
+                AND review_status = ?
+                """,
+                (
+                    match_id,
+                    EventType.CORNER,
+                    EventSource.DETECTOR,
+                    ReviewStatus.UNREVIEWED,
+                ),
+            )
+            inserted_ids: list[str] = []
+            for candidate in candidates:
+                if any(abs(candidate.peak_seconds - peak) < 12 for peak in protected_peaks):
+                    continue
+                event_id = str(uuid4())
+                inserted_ids.append(event_id)
+                connection.execute(
+                    """
+                    INSERT INTO events (
+                        id, match_id, type, start_seconds, peak_seconds, end_seconds,
+                        confidence, source, review_status, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event_id,
+                        match_id,
+                        candidate.type,
+                        candidate.start_seconds,
+                        candidate.peak_seconds,
+                        candidate.end_seconds,
+                        candidate.confidence,
+                        candidate.source,
+                        ReviewStatus.UNREVIEWED,
+                        candidate.notes,
+                    ),
+                )
+        return [event for event_id in inserted_ids if (event := self.get_event(event_id))]
 
     def create_analysis_job(self, match_id: str) -> AnalysisJob:
         job_id = str(uuid4())

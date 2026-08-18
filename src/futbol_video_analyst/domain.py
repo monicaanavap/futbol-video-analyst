@@ -93,6 +93,16 @@ class Event(EventCreate):
     created_at: str
 
 
+class EventReview(BaseModel):
+    review_status: ReviewStatus
+
+    @model_validator(mode="after")
+    def require_decision(self) -> "EventReview":
+        if self.review_status is ReviewStatus.UNREVIEWED:
+            raise ValueError("Review must confirm or reject the event")
+        return self
+
+
 class AnalysisJob(BaseModel):
     id: str
     match_id: str

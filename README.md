@@ -71,6 +71,7 @@ El motor local ya permite:
 4. Consultar todas las etiquetas o filtrarlas por tipo.
 5. Exportar bajo demanda un clip MP4 desde el inicio hasta el final de una etiqueta.
 6. Ejecutar un primer análisis visual local con progreso y señales por muestra.
+7. Proponer corners candidatos, confirmarlos o descartarlos desde la línea de tiempo.
 
 Ejemplo para importar un partido:
 
@@ -94,6 +95,11 @@ a jugadores y balón. Los objetos son estimaciones geométricas experimentales, 
 detecciones confirmadas: pueden contener falsos positivos y todavía no representan
 eventos. Son las señales base para construir y evaluar el detector automático de
 corners.
+
+El detector temporal de corners exige que coincidan campo visible, líneas blancas,
+balón y varios jugadores en una toma estable. Agrupa señales cercanas para evitar
+etiquetas repetidas y muestra una confianza aproximada. Sigue siendo una heurística
+experimental: cada propuesta debe revisarse antes de considerarse un corner real.
 
 ## Pruebas
 

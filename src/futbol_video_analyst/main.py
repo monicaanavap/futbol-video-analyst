@@ -16,6 +16,7 @@ from futbol_video_analyst.domain import (
     AnalysisJob,
     Event,
     EventCreate,
+    EventReview,
     EventType,
     Match,
     MatchImport,
@@ -130,6 +131,13 @@ def create_app(
         if request.app.state.database.get_match(match_id) is None:
             raise HTTPException(status_code=404, detail="Match not found")
         return request.app.state.database.list_events(match_id, event_type)
+
+    @application.patch("/events/{event_id}/review", response_model=Event, tags=["events"])
+    def review_event(event_id: str, payload: EventReview, request: Request) -> Event:
+        event = request.app.state.database.review_event(event_id, payload.review_status)
+        if event is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+        return event
 
     @application.post("/events/{event_id}/clip", response_class=FileResponse, tags=["clips"])
     def export_event_clip(event_id: str, request: Request) -> FileResponse:
