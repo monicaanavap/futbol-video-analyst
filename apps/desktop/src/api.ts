@@ -39,6 +39,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(event),
     }),
+  reclassifyEvent: (eventId: string, event: EventUpdate) =>
+    request<MatchEvent>(`/events/${eventId}/reclassify`, {
+      method: "PATCH",
+      body: JSON.stringify(event),
+    }),
   deleteEvent: async (eventId: string) => {
     const response = await fetch(`${API_URL}/events/${eventId}`, { method: "DELETE" });
     if (!response.ok) throw new Error("No se pudo eliminar la etiqueta");

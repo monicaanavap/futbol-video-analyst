@@ -195,10 +195,10 @@ function App() {
     }
   };
 
-  const handleEventUpdated = (updated: MatchEvent) => {
+  const handleEventUpdated = (updated: MatchEvent, message = "Etiqueta actualizada") => {
     setEvents((current) => current.map((event) => event.id === updated.id ? updated : event));
     setEditingEvent(null);
-    setNotice("Etiqueta actualizada");
+    setNotice(message);
   };
 
   const handleEventDeleted = (eventId: string) => {
@@ -322,7 +322,7 @@ function App() {
                       <button disabled={reviewingEvent === event.id} className="confirm-button" onClick={() => void reviewEvent(event, "confirmed")}>{reviewingEvent === event.id ? "Guardando…" : event.review_status === "rejected" ? "Restaurar y confirmar" : "Confirmar"}</button>
                       {event.review_status === "unreviewed" && <button disabled={reviewingEvent === event.id} className="reject-button" onClick={() => void reviewEvent(event, "rejected")}>{reviewingEvent === event.id ? "Guardando…" : "Descartar"}</button>}
                     </div>}
-                    {event.review_status !== "rejected" && <button className="edit-button" onClick={() => setEditingEvent(event)}>Editar</button>}
+                    <button className="edit-button" onClick={() => setEditingEvent(event)}>{event.review_status === "rejected" ? "Reclasificar" : "Editar"}</button>
                     <button className="clip-button" disabled={exportingEvent === event.id} onClick={() => void exportClip(event)}>
                       {exportingEvent === event.id ? "Exportando…" : "Exportar clip"}
                     </button>
@@ -340,7 +340,7 @@ function App() {
   );
 }
 
-function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { match: Match; event: MatchEvent; onClose: () => void; onUpdated: (event: MatchEvent) => void; onDeleted: (eventId: string) => void }) {
+function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { match: Match; event: MatchEvent; onClose: () => void; onUpdated: (event: MatchEvent, message?: string) => void; onDeleted: (eventId: string) => void }) {
   const [draft, setDraft] = useState<EventUpdate>({ type: event.type, start_seconds: event.start_seconds, peak_seconds: event.peak_seconds, end_seconds: event.end_seconds, notes: event.notes ?? "" });
   const [startText, setStartText] = useState(formatTimeInput(event.start_seconds));
   const [peakText, setPeakText] = useState(formatTimeInput(event.peak_seconds));
@@ -375,8 +375,19 @@ function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { matc
     if (!(0 <= start && start <= peak && peak <= end && end <= match.duration_seconds)) {
       setError("El momento debe quedar entre el inicio y el final del clip"); return;
     }
+    if (event.review_status === "rejected" && draft.type === (event.detected_type ?? event.type)) {
+      setError("Para reclasificar, elige el tipo real. Si sí era corner, usa Restaurar y confirmar."); return;
+    }
     setSaving(true);
-    try { onUpdated(await api.updateEvent(event.id, { ...draft, start_seconds: start, peak_seconds: peak, end_seconds: end })); }
+    try {
+      const payload = { ...draft, start_seconds: start, peak_seconds: peak, end_seconds: end };
+      if (event.review_status === "rejected") {
+        const updated = await api.reclassifyEvent(event.id, payload);
+        onUpdated(updated, "Etiqueta reclasificada y confirmada");
+      } else {
+        onUpdated(await api.updateEvent(event.id, payload));
+      }
+    }
     catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo actualizar"); }
     finally { setSaving(false); }
   };
@@ -387,7 +398,7 @@ function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { matc
     catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo eliminar"); setSaving(false); }
   };
   return <div className="modal-backdrop"><form className="modal compact" noValidate onSubmit={submit}>
-    <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">EDITAR ETIQUETA</p><h2>Corregir momento</h2>
+    <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">{event.review_status === "rejected" ? "RECLASIFICAR DESCARTADO" : "EDITAR ETIQUETA"}</p><h2>{event.review_status === "rejected" ? "¿Qué evento fue realmente?" : "Corregir momento"}</h2>
     <label>Tipo<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as EventType })}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Momento clave (minuto:segundo)<input inputMode="decimal" value={peakText} onChange={(e) => setPeakText(e.target.value)} onBlur={applyPeak} placeholder="63:19" /><small>Ejemplo: 7:15 o 63:19.5</small></label>
     <details className="advanced-options"><summary>Ajustar duración del clip</summary><div className="time-grid">
@@ -395,7 +406,7 @@ function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { matc
       <label>Final (min:seg)<input inputMode="decimal" value={endText} onChange={(e) => setEndText(e.target.value)} placeholder="63:31" /></label>
     </div></details>
     <label>Notas<input value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Opcional" /></label>
-    {error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions split"><button type="button" className="danger-button" disabled={saving} onClick={() => void remove()}>Eliminar</button><span /><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button type="submit" className="primary" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></div>
+    {error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions split"><button type="button" className="danger-button" disabled={saving} onClick={() => void remove()}>Eliminar</button><span /><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button type="submit" className="primary" disabled={saving}>{saving ? "Guardando…" : event.review_status === "rejected" ? "Guardar y confirmar tipo" : "Guardar cambios"}</button></div>
   </form></div>;
 }
 

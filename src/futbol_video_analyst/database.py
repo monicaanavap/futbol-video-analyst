@@ -228,6 +228,25 @@ class Database:
             )
         return self.get_event(event_id)
 
+    def reclassify_event(self, event_id: str, payload: EventUpdate) -> Event | None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE events SET type = ?, start_seconds = ?, peak_seconds = ?,
+                    end_seconds = ?, notes = ?, review_status = ? WHERE id = ?
+                """,
+                (
+                    payload.type,
+                    payload.start_seconds,
+                    payload.peak_seconds,
+                    payload.end_seconds,
+                    payload.notes,
+                    ReviewStatus.CONFIRMED,
+                    event_id,
+                ),
+            )
+        return self.get_event(event_id)
+
     def delete_event(self, event_id: str) -> bool:
         with self.connect() as connection:
             result = connection.execute("DELETE FROM events WHERE id = ?", (event_id,))

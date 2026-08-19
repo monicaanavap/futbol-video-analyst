@@ -117,6 +117,8 @@ La interfaz recibe todos los tiempos como `minuto:segundo` (por ejemplo `63:19` 
 puede reclasificarse como penal, saque de banda, tiro
 u otro evento antes de confirmarlo. La aplicación conserva internamente el tipo
 original propuesto para que esa corrección también mejore el detector de corners.
+Un evento descartado ofrece `Reclasificar`: guardar el tipo real y confirmarlo es
+una sola operación, sin tener que restaurarlo primero como corner.
 
 ## Pruebas
 

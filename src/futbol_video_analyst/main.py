@@ -154,6 +154,24 @@ def create_app(
         assert event is not None
         return event
 
+    @application.patch("/events/{event_id}/reclassify", response_model=Event, tags=["events"])
+    def reclassify_event(event_id: str, payload: EventUpdate, request: Request) -> Event:
+        existing = request.app.state.database.get_event(event_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+        match = request.app.state.database.get_match(existing.match_id)
+        if match is None:
+            raise HTTPException(status_code=404, detail="Match not found")
+        if existing.review_status != "rejected":
+            raise HTTPException(status_code=409, detail="Only rejected events can be reclassified")
+        if payload.type == (existing.detected_type or existing.type):
+            raise HTTPException(status_code=422, detail="Choose a different event type")
+        if payload.end_seconds > match.duration_seconds:
+            raise HTTPException(status_code=422, detail="Event exceeds video duration")
+        event = request.app.state.database.reclassify_event(event_id, payload)
+        assert event is not None
+        return event
+
     @application.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_event(event_id: str, request: Request) -> None:
         if not request.app.state.database.delete_event(event_id):

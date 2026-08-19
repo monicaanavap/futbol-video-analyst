@@ -168,8 +168,9 @@ def test_reclassified_confirmed_candidate_calibrates_as_rejected_corner(tmp_path
                 break
             time.sleep(0.01)
         event = client.get(f"/matches/{match_id}/events").json()[0]
-        client.patch(
-            f"/events/{event['id']}",
+        client.patch(f"/events/{event['id']}/review", json={"review_status": "rejected"})
+        reclassified = client.patch(
+            f"/events/{event['id']}/reclassify",
             json={
                 "type": "penalty",
                 "start_seconds": 0,
@@ -178,9 +179,12 @@ def test_reclassified_confirmed_candidate_calibrates_as_rejected_corner(tmp_path
                 "notes": "Penal confirmado",
             },
         )
-        client.patch(f"/events/{event['id']}/review", json={"review_status": "confirmed"})
         examples = client.app.state.database.list_corner_review_examples()
 
+    assert reclassified.status_code == 200
+    assert reclassified.json()["type"] == "penalty"
+    assert reclassified.json()["review_status"] == "confirmed"
+    assert reclassified.json()["detected_type"] == "corner"
     assert examples[0][1] == "rejected"
 
 

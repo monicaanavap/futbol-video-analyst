@@ -79,6 +79,8 @@ Cada evento automático conserva `detected_type` aunque el coach cambie su tipo
 visible. Por ejemplo, un corner candidato corregido y confirmado como penal se
 muestra como penal, pero entra al calibrador de corners como un ejemplo negativo.
 Esto permite aprovechar correcciones multiclase sin perder su procedencia.
+La reclasificación de un descartado actualiza el tipo y el estado confirmado en
+una sola transacción SQLite, evitando estados parciales.
 
 React presenta y valida tiempos como `minuto:segundo`; la conversión a segundos
 ocurre únicamente al llamar a la API. SQLite conserva valores numéricos para que
