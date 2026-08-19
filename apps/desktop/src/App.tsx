@@ -27,6 +27,20 @@ function formatTime(seconds: number) {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
 }
 
+function formatTimeInput(seconds: number) {
+  const safe = Math.max(0, seconds);
+  const minutes = Math.floor(safe / 60);
+  const remainder = safe - minutes * 60;
+  const [whole, decimal] = remainder.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1").split(".");
+  return `${minutes}:${whole.padStart(2, "0")}${decimal ? `.${decimal}` : ""}`;
+}
+
+function parseTimeInput(value: string) {
+  const match = value.trim().match(/^(\d+):([0-5]?\d(?:\.\d{1,2})?)$/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
 function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -328,28 +342,41 @@ function App() {
 
 function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { match: Match; event: MatchEvent; onClose: () => void; onUpdated: (event: MatchEvent) => void; onDeleted: (eventId: string) => void }) {
   const [draft, setDraft] = useState<EventUpdate>({ type: event.type, start_seconds: event.start_seconds, peak_seconds: event.peak_seconds, end_seconds: event.end_seconds, notes: event.notes ?? "" });
+  const [startText, setStartText] = useState(formatTimeInput(event.start_seconds));
+  const [peakText, setPeakText] = useState(formatTimeInput(event.peak_seconds));
+  const [endText, setEndText] = useState(formatTimeInput(event.end_seconds));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const updatePeak = (value: number) => {
+  const applyPeak = () => {
+    const value = parseTimeInput(peakText);
+    if (value === null) { setError("Usa minuto:segundo, por ejemplo 63:19"); return; }
     const contextBefore = draft.peak_seconds - draft.start_seconds;
     const contextAfter = draft.end_seconds - draft.peak_seconds;
-    setDraft({
+    const next = {
       ...draft,
       peak_seconds: value,
       start_seconds: Math.max(0, value - contextBefore),
       end_seconds: Math.min(match.duration_seconds, value + contextAfter),
-    });
+    };
+    setDraft(next);
+    setPeakText(formatTimeInput(next.peak_seconds));
+    setStartText(formatTimeInput(next.start_seconds));
+    setEndText(formatTimeInput(next.end_seconds));
+    setError("");
   };
   const submit = async (formEvent: FormEvent) => {
     formEvent.preventDefault(); setError("");
-    if (![draft.start_seconds, draft.peak_seconds, draft.end_seconds].every(Number.isFinite)) {
-      setError("Revisa los tiempos de la etiqueta"); return;
+    const start = parseTimeInput(startText);
+    const peak = parseTimeInput(peakText);
+    const end = parseTimeInput(endText);
+    if (start === null || peak === null || end === null) {
+      setError("Usa minuto:segundo, por ejemplo 63:19"); return;
     }
-    if (!(0 <= draft.start_seconds && draft.start_seconds <= draft.peak_seconds && draft.peak_seconds <= draft.end_seconds && draft.end_seconds <= match.duration_seconds)) {
+    if (!(0 <= start && start <= peak && peak <= end && end <= match.duration_seconds)) {
       setError("El momento debe quedar entre el inicio y el final del clip"); return;
     }
     setSaving(true);
-    try { onUpdated(await api.updateEvent(event.id, draft)); }
+    try { onUpdated(await api.updateEvent(event.id, { ...draft, start_seconds: start, peak_seconds: peak, end_seconds: end })); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo actualizar"); }
     finally { setSaving(false); }
   };
@@ -362,10 +389,10 @@ function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { matc
   return <div className="modal-backdrop"><form className="modal compact" noValidate onSubmit={submit}>
     <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">EDITAR ETIQUETA</p><h2>Corregir momento</h2>
     <label>Tipo<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as EventType })}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <label>Momento clave (segundos)<input type="number" step="0.1" min="0" max={match.duration_seconds} value={draft.peak_seconds} onChange={(e) => updatePeak(Number(e.target.value))} /></label>
+    <label>Momento clave (minuto:segundo)<input inputMode="decimal" value={peakText} onChange={(e) => setPeakText(e.target.value)} onBlur={applyPeak} placeholder="63:19" /><small>Ejemplo: 7:15 o 63:19.5</small></label>
     <details className="advanced-options"><summary>Ajustar duración del clip</summary><div className="time-grid">
-      <label>Inicio<input type="number" step="0.1" min="0" max={draft.peak_seconds} value={draft.start_seconds} onChange={(e) => setDraft({ ...draft, start_seconds: Number(e.target.value) })} /></label>
-      <label>Final<input type="number" step="0.1" min={draft.peak_seconds} max={match.duration_seconds} value={draft.end_seconds} onChange={(e) => setDraft({ ...draft, end_seconds: Number(e.target.value) })} /></label>
+      <label>Inicio (min:seg)<input inputMode="decimal" value={startText} onChange={(e) => setStartText(e.target.value)} placeholder="63:11" /></label>
+      <label>Final (min:seg)<input inputMode="decimal" value={endText} onChange={(e) => setEndText(e.target.value)} placeholder="63:31" /></label>
     </div></details>
     <label>Notas<input value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Opcional" /></label>
     {error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions split"><button type="button" className="danger-button" disabled={saving} onClick={() => void remove()}>Eliminar</button><span /><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button type="submit" className="primary" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></div>
@@ -406,24 +433,35 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
 function EventDialog({ match, currentTime, onClose, onCreated }: { match: Match; currentTime: number; onClose: () => void; onCreated: (event: MatchEvent) => void }) {
   const peak = Math.round(currentTime);
   const [draft, setDraft] = useState<EventDraft>({ type: "corner", start_seconds: Math.max(0, peak - 5), peak_seconds: peak, end_seconds: Math.min(match.duration_seconds, peak + 10), confidence: 1, source: "manual", notes: "" });
+  const [startText, setStartText] = useState(formatTimeInput(Math.max(0, peak - 5)));
+  const [peakText, setPeakText] = useState(formatTimeInput(peak));
+  const [endText, setEndText] = useState(formatTimeInput(Math.min(match.duration_seconds, peak + 10)));
   const [error, setError] = useState("");
-  const updatePeak = (value: number) => setDraft({
-    ...draft,
-    peak_seconds: value,
-    start_seconds: Math.max(0, value - 5),
-    end_seconds: Math.min(match.duration_seconds, value + 10),
-  });
-  const submit = async (event: FormEvent) => { event.preventDefault(); try { onCreated(await api.createEvent(match.id, draft)); } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar"); } };
-  return <div className="modal-backdrop"><form className="modal compact" onSubmit={submit}>
+  const applyPeak = () => {
+    const value = parseTimeInput(peakText);
+    if (value === null) { setError("Usa minuto:segundo, por ejemplo 7:15"); return; }
+    const start = Math.max(0, value - 5);
+    const end = Math.min(match.duration_seconds, value + 10);
+    setDraft({ ...draft, peak_seconds: value, start_seconds: start, end_seconds: end });
+    setPeakText(formatTimeInput(value)); setStartText(formatTimeInput(start)); setEndText(formatTimeInput(end)); setError("");
+  };
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setError("");
+    const start = parseTimeInput(startText); const moment = parseTimeInput(peakText); const end = parseTimeInput(endText);
+    if (start === null || moment === null || end === null) { setError("Usa minuto:segundo, por ejemplo 7:15"); return; }
+    if (!(0 <= start && start <= moment && moment <= end && end <= match.duration_seconds)) { setError("El momento debe quedar entre el inicio y el final del clip"); return; }
+    try { onCreated(await api.createEvent(match.id, { ...draft, start_seconds: start, peak_seconds: moment, end_seconds: end })); } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo guardar"); }
+  };
+  return <div className="modal-backdrop"><form className="modal compact" noValidate onSubmit={submit}>
     <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">ETIQUETA MANUAL</p><h2>Marcar momento</h2>
     <label>Tipo<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as EventType })}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <label>Momento clave (segundos)<input type="number" min="0" max={match.duration_seconds} value={draft.peak_seconds} onChange={(e) => updatePeak(Number(e.target.value))} /><small>Usamos el momento actual del reproductor. El clip incluirá contexto antes y después.</small></label>
+    <label>Momento clave (minuto:segundo)<input inputMode="decimal" value={peakText} onChange={(e) => setPeakText(e.target.value)} onBlur={applyPeak} placeholder="7:15" /><small>Usamos el momento actual del reproductor. Ejemplo: 7:15.</small></label>
     <details className="advanced-options"><summary>Ajustar duración del clip</summary><p>Solo cambia estos valores si quieres más o menos contexto.</p><div className="time-grid">
-      <label>Inicio del clip<input type="number" min="0" max={draft.peak_seconds} value={draft.start_seconds} onChange={(e) => setDraft({ ...draft, start_seconds: Number(e.target.value) })} /></label>
-      <label>Final del clip<input type="number" min={draft.peak_seconds} max={match.duration_seconds} value={draft.end_seconds} onChange={(e) => setDraft({ ...draft, end_seconds: Number(e.target.value) })} /></label>
+      <label>Inicio (min:seg)<input inputMode="decimal" value={startText} onChange={(e) => setStartText(e.target.value)} placeholder="7:10" /></label>
+      <label>Final (min:seg)<input inputMode="decimal" value={endText} onChange={(e) => setEndText(e.target.value)} placeholder="7:25" /></label>
     </div></details>
     <label>Notas<input value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Opcional" /></label>
-    {error && <p className="form-error">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary">Guardar etiqueta</button></div>
+    {error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button type="submit" className="primary">Guardar etiqueta</button></div>
   </form></div>;
 }
 
