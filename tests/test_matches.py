@@ -130,26 +130,58 @@ def test_edits_and_deletes_an_event(tmp_path: Path) -> None:
         match_id = import_match(client, tmp_path)["id"]
         event = client.post(
             f"/matches/{match_id}/events",
-            json={"type": "corner", "start_seconds": 10, "peak_seconds": 15, "end_seconds": 22},
+            json={
+                "type": "corner",
+                "start_seconds": 10.25,
+                "peak_seconds": 15.5,
+                "end_seconds": 22.75,
+                "source": "detector",
+            },
         ).json()
         updated = client.patch(
             f"/events/{event['id']}",
             json={
-                "type": "shot",
+                "type": "throw_in",
                 "start_seconds": 11,
                 "peak_seconds": 16,
                 "end_seconds": 24,
-                "notes": "Era un tiro, no un corner",
+                "notes": "Era un saque de banda, no un corner",
             },
         )
         deleted = client.delete(f"/events/{event['id']}")
         missing = client.get(f"/matches/{match_id}/events")
 
     assert updated.status_code == 200
-    assert updated.json()["type"] == "shot"
-    assert updated.json()["notes"] == "Era un tiro, no un corner"
+    assert updated.json()["type"] == "throw_in"
+    assert updated.json()["detected_type"] == "corner"
+    assert updated.json()["notes"] == "Era un saque de banda, no un corner"
     assert deleted.status_code == 204
     assert missing.json() == []
+
+
+def test_reclassified_confirmed_candidate_calibrates_as_rejected_corner(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        match_id = import_match(client, tmp_path)["id"]
+        job = client.post(f"/matches/{match_id}/analysis").json()
+        for _ in range(20):
+            if client.get(f"/analysis/{job['id']}").json()["status"] == "completed":
+                break
+            time.sleep(0.01)
+        event = client.get(f"/matches/{match_id}/events").json()[0]
+        client.patch(
+            f"/events/{event['id']}",
+            json={
+                "type": "penalty",
+                "start_seconds": 0,
+                "peak_seconds": 4,
+                "end_seconds": 10,
+                "notes": "Penal confirmado",
+            },
+        )
+        client.patch(f"/events/{event['id']}/review", json={"review_status": "confirmed"})
+        examples = client.app.state.database.list_corner_review_examples()
+
+    assert examples[0][1] == "rejected"
 
 
 def test_runs_visual_analysis_in_the_background(tmp_path: Path) -> None:

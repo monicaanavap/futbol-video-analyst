@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS events (
     confidence REAL NOT NULL,
     source TEXT NOT NULL,
     review_status TEXT NOT NULL,
+    detected_type TEXT,
     notes TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -88,6 +89,15 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            event_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(events)").fetchall()
+            }
+            if "detected_type" not in event_columns:
+                connection.execute("ALTER TABLE events ADD COLUMN detected_type TEXT")
+            connection.execute(
+                "UPDATE events SET detected_type = type WHERE source = ? AND detected_type IS NULL",
+                (EventSource.DETECTOR,),
+            )
             existing_columns = {
                 row["name"]
                 for row in connection.execute("PRAGMA table_info(visual_signals)").fetchall()
@@ -156,8 +166,8 @@ class Database:
                 """
                 INSERT INTO events (
                     id, match_id, type, start_seconds, peak_seconds, end_seconds,
-                    confidence, source, review_status, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    confidence, source, review_status, detected_type, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event_id,
@@ -169,6 +179,7 @@ class Database:
                     payload.confidence,
                     payload.source,
                     ReviewStatus.UNREVIEWED,
+                    payload.type if payload.source is EventSource.DETECTOR else None,
                     payload.notes,
                 ),
             )
@@ -231,7 +242,7 @@ class Database:
                 for row in connection.execute(
                     """
                     SELECT peak_seconds FROM events
-                    WHERE match_id = ? AND type = ?
+                    WHERE match_id = ? AND detected_type = ?
                       AND (source = ? OR review_status != ?)
                     """,
                     (
@@ -264,8 +275,8 @@ class Database:
                     """
                     INSERT INTO events (
                         id, match_id, type, start_seconds, peak_seconds, end_seconds,
-                        confidence, source, review_status, notes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        confidence, source, review_status, detected_type, notes
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         event_id,
@@ -277,6 +288,7 @@ class Database:
                         candidate.confidence,
                         candidate.source,
                         ReviewStatus.UNREVIEWED,
+                        candidate.type,
                         candidate.notes,
                     ),
                 )
@@ -376,13 +388,14 @@ class Database:
             rows = connection.execute(
                 """
                 WITH nearest AS (
-                    SELECT e.id AS event_id, e.review_status, s.*,
+                    SELECT e.id AS event_id, e.review_status, e.type AS current_type,
+                        e.detected_type, s.*,
                         row_number() OVER (
                             PARTITION BY e.id ORDER BY abs(s.timestamp_seconds - e.peak_seconds)
                         ) AS nearest_rank
                     FROM events e
                     JOIN visual_signals s ON s.match_id = e.match_id
-                    WHERE e.type = ? AND e.source = ? AND e.review_status != ?
+                    WHERE e.detected_type = ? AND e.source = ? AND e.review_status != ?
                 )
                 SELECT * FROM nearest WHERE nearest_rank = 1
                 """,
@@ -392,6 +405,8 @@ class Database:
         for row in rows:
             values = dict(row)
             review_status = ReviewStatus(values.pop("review_status"))
+            if values.pop("current_type") != values.pop("detected_type"):
+                review_status = ReviewStatus.REJECTED
             values.pop("event_id")
             values.pop("nearest_rank")
             examples.append((VisualSignal.model_validate(values), review_status))

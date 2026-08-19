@@ -75,6 +75,11 @@ de uno descartado para convertirse en propuesta. Es una calibración local y
 explicable; no reemplaza un modelo entrenado cuando exista un conjunto de datos
 mayor. Los eventos eliminados quedan fuera porque ya no existen en SQLite.
 
+Cada evento automático conserva `detected_type` aunque el coach cambie su tipo
+visible. Por ejemplo, un corner candidato corregido y confirmado como penal se
+muestra como penal, pero entra al calibrador de corners como un ejemplo negativo.
+Esto permite aprovechar correcciones multiclase sin perder su procedencia.
+
 ## Flujo de datos
 
 ```text

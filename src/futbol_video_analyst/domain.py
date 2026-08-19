@@ -12,6 +12,7 @@ class MatchStatus(StrEnum):
 
 class EventType(StrEnum):
     CORNER = "corner"
+    THROW_IN = "throw_in"
     PENALTY = "penalty"
     GOAL = "goal"
     SHOT = "shot"
@@ -104,6 +105,7 @@ class EventUpdate(BaseModel):
 class Event(EventCreate):
     id: str
     match_id: str
+    detected_type: EventType | None = None
     review_status: ReviewStatus
     created_at: str
 

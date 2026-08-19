@@ -1,4 +1,4 @@
-export type EventType = "corner" | "penalty" | "goal" | "shot" | "foul" | "custom";
+export type EventType = "corner" | "throw_in" | "penalty" | "goal" | "shot" | "foul" | "custom";
 
 export interface Match {
   id: string;
@@ -16,6 +16,7 @@ export interface Match {
 export interface MatchEvent {
   id: string;
   match_id: string;
+  detected_type: EventType | null;
   type: EventType;
   start_seconds: number;
   peak_seconds: number;

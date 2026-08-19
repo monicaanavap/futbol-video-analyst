@@ -112,6 +112,11 @@ y destino y después muestra la ruta completa donde quedó guardado. En el naveg
 el mismo botón conserva la descarga normal del navegador. Las etiquetas descartadas
 se pueden mostrar y restaurar si una decisión se tomó por error.
 
+La edición acepta tiempos decimales y reajusta el contexto del clip al mover el
+momento clave. Un candidato puede reclasificarse como penal, saque de banda, tiro
+u otro evento antes de confirmarlo. La aplicación conserva internamente el tipo
+original propuesto para que esa corrección también mejore el detector de corners.
+
 ## Pruebas
 
 ```bash

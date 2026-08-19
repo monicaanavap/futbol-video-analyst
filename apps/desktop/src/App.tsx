@@ -4,6 +4,7 @@ import type { AnalysisJob, EventDraft, EventType, EventUpdate, Match, MatchEvent
 
 const eventLabels: Record<EventType, string> = {
   corner: "Corners",
+  throw_in: "Saques de banda",
   penalty: "Penales",
   goal: "Goles",
   shot: "Tiros",
@@ -13,6 +14,7 @@ const eventLabels: Record<EventType, string> = {
 
 const eventColors: Record<EventType, string> = {
   corner: "#f3c969",
+  throw_in: "#e6a76f",
   penalty: "#ef7d90",
   goal: "#6de0a5",
   shot: "#75b7f5",
@@ -328,8 +330,25 @@ function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { matc
   const [draft, setDraft] = useState<EventUpdate>({ type: event.type, start_seconds: event.start_seconds, peak_seconds: event.peak_seconds, end_seconds: event.end_seconds, notes: event.notes ?? "" });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const updatePeak = (value: number) => {
+    const contextBefore = draft.peak_seconds - draft.start_seconds;
+    const contextAfter = draft.end_seconds - draft.peak_seconds;
+    setDraft({
+      ...draft,
+      peak_seconds: value,
+      start_seconds: Math.max(0, value - contextBefore),
+      end_seconds: Math.min(match.duration_seconds, value + contextAfter),
+    });
+  };
   const submit = async (formEvent: FormEvent) => {
-    formEvent.preventDefault(); setSaving(true); setError("");
+    formEvent.preventDefault(); setError("");
+    if (![draft.start_seconds, draft.peak_seconds, draft.end_seconds].every(Number.isFinite)) {
+      setError("Revisa los tiempos de la etiqueta"); return;
+    }
+    if (!(0 <= draft.start_seconds && draft.start_seconds <= draft.peak_seconds && draft.peak_seconds <= draft.end_seconds && draft.end_seconds <= match.duration_seconds)) {
+      setError("El momento debe quedar entre el inicio y el final del clip"); return;
+    }
+    setSaving(true);
     try { onUpdated(await api.updateEvent(event.id, draft)); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo actualizar"); }
     finally { setSaving(false); }
@@ -340,16 +359,16 @@ function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { matc
     try { await api.deleteEvent(event.id); onDeleted(event.id); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo eliminar"); setSaving(false); }
   };
-  return <div className="modal-backdrop"><form className="modal compact" onSubmit={submit}>
+  return <div className="modal-backdrop"><form className="modal compact" noValidate onSubmit={submit}>
     <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">EDITAR ETIQUETA</p><h2>Corregir momento</h2>
     <label>Tipo<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as EventType })}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <label>Momento clave (segundos)<input type="number" min="0" max={match.duration_seconds} value={draft.peak_seconds} onChange={(e) => setDraft({ ...draft, peak_seconds: Number(e.target.value) })} /></label>
+    <label>Momento clave (segundos)<input type="number" step="0.1" min="0" max={match.duration_seconds} value={draft.peak_seconds} onChange={(e) => updatePeak(Number(e.target.value))} /></label>
     <details className="advanced-options"><summary>Ajustar duración del clip</summary><div className="time-grid">
-      <label>Inicio<input type="number" min="0" max={draft.peak_seconds} value={draft.start_seconds} onChange={(e) => setDraft({ ...draft, start_seconds: Number(e.target.value) })} /></label>
-      <label>Final<input type="number" min={draft.peak_seconds} max={match.duration_seconds} value={draft.end_seconds} onChange={(e) => setDraft({ ...draft, end_seconds: Number(e.target.value) })} /></label>
+      <label>Inicio<input type="number" step="0.1" min="0" max={draft.peak_seconds} value={draft.start_seconds} onChange={(e) => setDraft({ ...draft, start_seconds: Number(e.target.value) })} /></label>
+      <label>Final<input type="number" step="0.1" min={draft.peak_seconds} max={match.duration_seconds} value={draft.end_seconds} onChange={(e) => setDraft({ ...draft, end_seconds: Number(e.target.value) })} /></label>
     </div></details>
     <label>Notas<input value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="Opcional" /></label>
-    {error && <p className="form-error">{error}</p>}<div className="modal-actions split"><button type="button" className="danger-button" disabled={saving} onClick={() => void remove()}>Eliminar</button><span /><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button className="primary" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></div>
+    {error && <p className="form-error" role="alert">{error}</p>}<div className="modal-actions split"><button type="button" className="danger-button" disabled={saving} onClick={() => void remove()}>Eliminar</button><span /><button type="button" className="secondary" onClick={onClose}>Cancelar</button><button type="submit" className="primary" disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</button></div>
   </form></div>;
 }
 
