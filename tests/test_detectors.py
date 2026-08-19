@@ -1,5 +1,5 @@
 from futbol_video_analyst.detectors import CornerCandidateDetector, select_motion_timestamp
-from futbol_video_analyst.domain import Match, MatchStatus, VisualSignal
+from futbol_video_analyst.domain import Match, MatchStatus, ReviewStatus, VisualSignal
 
 
 def make_match() -> Match:
@@ -17,18 +17,25 @@ def make_match() -> Match:
     )
 
 
-def signal(timestamp: float, players: int = 4, ball: int = 1) -> VisualSignal:
+def signal(
+    timestamp: float,
+    players: int = 4,
+    ball: int = 1,
+    line_ratio: float = 0.02,
+    change_score: float = 0.05,
+    green_ratio: float = 0.7,
+) -> VisualSignal:
     return VisualSignal(
         id=f"signal-{timestamp}",
         match_id="match-id",
         timestamp_seconds=timestamp,
-        green_ratio=0.7,
+        green_ratio=green_ratio,
         brightness=0.5,
-        change_score=0.05,
+        change_score=change_score,
         likely_field=True,
         player_candidates=players,
         ball_candidates=ball,
-        line_ratio=0.02,
+        line_ratio=line_ratio,
     )
 
 
@@ -66,3 +73,24 @@ def test_refines_coarse_timestamp_to_strongest_field_motion() -> None:
 
 def test_keeps_coarse_timestamp_without_usable_motion() -> None:
     assert select_motion_timestamp(440, [(435.0, 0.004, 0.7)]) == 440
+
+
+def test_review_calibration_keeps_confirmed_like_signal_and_filters_rejected() -> None:
+    positive_one = signal(10, players=10, ball=70, line_ratio=0.08, change_score=0.12)
+    positive_two = signal(20, players=14, ball=95, line_ratio=0.08, change_score=0.15)
+    rejected = [
+        signal(30 + index, players=25, ball=140, line_ratio=0.14, change_score=0.17)
+        for index in range(5)
+    ]
+    examples = [
+        (positive_one, ReviewStatus.CONFIRMED),
+        (positive_two, ReviewStatus.CONFIRMED),
+        *((item, ReviewStatus.REJECTED) for item in rejected),
+    ]
+
+    accepted = CornerCandidateDetector().detect(make_match(), [positive_one], examples)
+    filtered = CornerCandidateDetector().detect(make_match(), [rejected[0]], examples)
+
+    assert len(accepted) == 1
+    assert accepted[0].notes == "Candidato automático calibrado con revisiones locales"
+    assert filtered == []

@@ -1,6 +1,49 @@
 import cv2
 
-from futbol_video_analyst.domain import EventCreate, EventSource, EventType, Match, VisualSignal
+from futbol_video_analyst.domain import (
+    EventCreate,
+    EventSource,
+    EventType,
+    Match,
+    ReviewStatus,
+    VisualSignal,
+)
+
+
+def visual_feature_distance(first: VisualSignal, second: VisualSignal) -> float:
+    differences = (
+        (min(first.player_candidates, 30) - min(second.player_candidates, 30)) / 30,
+        (min(first.ball_candidates, 150) - min(second.ball_candidates, 150)) / 150,
+        (min(first.line_ratio, 0.18) - min(second.line_ratio, 0.18)) / 0.18,
+        (min(first.change_score, 0.2) - min(second.change_score, 0.2)) / 0.2,
+        first.green_ratio - second.green_ratio,
+    )
+    return sum(value * value for value in differences) ** 0.5
+
+
+class CornerReviewCalibration:
+    minimum_confirmed = 2
+    minimum_rejected = 5
+
+    def __init__(self, examples: list[tuple[VisualSignal, ReviewStatus]]) -> None:
+        self.confirmed = [signal for signal, status in examples if status is ReviewStatus.CONFIRMED]
+        self.rejected = [signal for signal, status in examples if status is ReviewStatus.REJECTED]
+
+    @property
+    def ready(self) -> bool:
+        return (
+            len(self.confirmed) >= self.minimum_confirmed
+            and len(self.rejected) >= self.minimum_rejected
+        )
+
+    def evaluate(self, signal: VisualSignal) -> tuple[bool, float]:
+        if not self.ready:
+            return True, 0.5
+        positive_distance = min(visual_feature_distance(signal, item) for item in self.confirmed)
+        negative_distance = min(visual_feature_distance(signal, item) for item in self.rejected)
+        total = positive_distance + negative_distance
+        positive_probability = negative_distance / total if total else 0.5
+        return positive_distance <= negative_distance * 0.9, positive_probability
 
 
 def select_motion_timestamp(
@@ -95,7 +138,13 @@ class CornerCandidateDetector:
 
     cooldown_seconds = 20.0
 
-    def detect(self, match: Match, signals: list[VisualSignal]) -> list[EventCreate]:
+    def detect(
+        self,
+        match: Match,
+        signals: list[VisualSignal],
+        review_examples: list[tuple[VisualSignal, ReviewStatus]] | None = None,
+    ) -> list[EventCreate]:
+        calibration = CornerReviewCalibration(review_examples or [])
         scored: list[tuple[VisualSignal, float]] = []
         for signal in signals:
             if (
@@ -106,6 +155,9 @@ class CornerCandidateDetector:
                 or signal.change_score >= 0.18
             ):
                 continue
+            accepted, learned_probability = calibration.evaluate(signal)
+            if not accepted:
+                continue
             score = (
                 0.2
                 + min(signal.player_candidates / 6, 1) * 0.25
@@ -113,6 +165,8 @@ class CornerCandidateDetector:
                 + min(signal.line_ratio / 0.02, 1) * 0.2
                 + 0.1
             )
+            if calibration.ready:
+                score = 0.45 * score + 0.55 * learned_probability
             scored.append((signal, min(score, 0.92)))
 
         selected: list[tuple[VisualSignal, float]] = []
@@ -135,7 +189,11 @@ class CornerCandidateDetector:
                 end_seconds=min(match.duration_seconds, signal.timestamp_seconds + 12),
                 confidence=score,
                 source=EventSource.DETECTOR,
-                notes="Candidato automático: balón, jugadores y líneas visibles en una toma estable",
+                notes=(
+                    "Candidato automático calibrado con revisiones locales"
+                    if calibration.ready
+                    else "Candidato automático: balón, jugadores y líneas visibles en una toma estable"
+                ),
             )
             for signal, score in selected
         ]

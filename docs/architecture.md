@@ -66,6 +66,15 @@ etiqueta. Los descartes permanecen en SQLite para auditoría y pueden restaurars
 La exportación nativa limita la copia a archivos generados dentro de `data/clips`
 y exige un destino MP4 elegido mediante el diálogo de Tauri.
 
+## Calibración mediante revisión
+
+Con un mínimo de dos corners confirmados y cinco descartados, se activa un vecino
+más cercano sobre jugadores candidatos, regiones de balón, líneas, cambio visual
+y proporción de campo. Una señal debe estar más cerca de un ejemplo confirmado que
+de uno descartado para convertirse en propuesta. Es una calibración local y
+explicable; no reemplaza un modelo entrenado cuando exista un conjunto de datos
+mayor. Los eventos eliminados quedan fuera porque ya no existen en SQLite.
+
 ## Flujo de datos
 
 ```text

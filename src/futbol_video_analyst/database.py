@@ -370,3 +370,29 @@ class Database:
                 (match_id,),
             ).fetchall()
         return [VisualSignal.model_validate(dict(row)) for row in rows]
+
+    def list_corner_review_examples(self) -> list[tuple[VisualSignal, ReviewStatus]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                WITH nearest AS (
+                    SELECT e.id AS event_id, e.review_status, s.*,
+                        row_number() OVER (
+                            PARTITION BY e.id ORDER BY abs(s.timestamp_seconds - e.peak_seconds)
+                        ) AS nearest_rank
+                    FROM events e
+                    JOIN visual_signals s ON s.match_id = e.match_id
+                    WHERE e.type = ? AND e.source = ? AND e.review_status != ?
+                )
+                SELECT * FROM nearest WHERE nearest_rank = 1
+                """,
+                (EventType.CORNER, EventSource.DETECTOR, ReviewStatus.UNREVIEWED),
+            ).fetchall()
+        examples: list[tuple[VisualSignal, ReviewStatus]] = []
+        for row in rows:
+            values = dict(row)
+            review_status = ReviewStatus(values.pop("review_status"))
+            values.pop("event_id")
+            values.pop("nearest_rank")
+            examples.append((VisualSignal.model_validate(values), review_status))
+        return examples

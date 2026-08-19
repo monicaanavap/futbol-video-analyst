@@ -103,6 +103,9 @@ etiquetas repetidas y muestra una confianza aproximada. Sigue siendo una heurís
 experimental: cada propuesta debe revisarse antes de considerarse un corner real.
 Después de encontrar una zona candidata, una segunda pasada revisa el intervalo
 cada medio segundo y coloca el momento en el cambio de movimiento más probable.
+Cuando existen al menos dos corners confirmados y cinco descartados, el detector
+también compara las nuevas señales contra esas revisiones locales. Las etiquetas
+eliminadas no participan en esta calibración.
 
 En la app de escritorio, `Exportar clip` abre el diálogo nativo para elegir nombre
 y destino y después muestra la ruta completa donde quedó guardado. En el navegador,

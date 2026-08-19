@@ -168,7 +168,8 @@ class AnalysisCoordinator:
             )
             signals = self.analyzer.analyze(match, report)
             self.database.replace_visual_signals(match.id, signals)
-            candidates = self.corner_detector.detect(match, signals)
+            review_examples = self.database.list_corner_review_examples()
+            candidates = self.corner_detector.detect(match, signals, review_examples)
             self.database.update_analysis_job(
                 job_id,
                 status=AnalysisStatus.RUNNING,
