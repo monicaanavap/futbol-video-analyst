@@ -1,4 +1,4 @@
-import type { AnalysisJob, DatasetExport, EventDraft, EventUpdate, Match, MatchEvent, VisualSignal } from "./types";
+import type { AnalysisJob, DatasetExportJob, EventDraft, EventUpdate, Match, MatchEvent, VisualSignal } from "./types";
 
 export const API_URL = "http://127.0.0.1:8000";
 
@@ -59,7 +59,8 @@ export const api = {
     const exportedPath = response.headers.get("X-Exported-Path");
     return { blob: await response.blob(), filename, exportedPath };
   },
-  exportDataset: () => request<DatasetExport>("/dataset/export", { method: "POST" }),
+  exportDataset: () => request<DatasetExportJob>("/dataset/export", { method: "POST" }),
+  getDatasetExport: (jobId: string) => request<DatasetExportJob>(`/dataset/export/${jobId}`),
   startAnalysis: (matchId: string) =>
     request<AnalysisJob>(`/matches/${matchId}/analysis`, { method: "POST" }),
   getAnalysis: (jobId: string) => request<AnalysisJob>(`/analysis/${jobId}`),

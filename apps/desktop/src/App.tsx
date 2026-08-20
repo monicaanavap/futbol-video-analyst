@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
-import type { AnalysisJob, EventDraft, EventType, EventUpdate, Match, MatchEvent, VisualSignal } from "./types";
+import type { AnalysisJob, DatasetExportJob, EventDraft, EventType, EventUpdate, Match, MatchEvent, VisualSignal } from "./types";
 
 const eventLabels: Record<EventType, string> = {
   corner: "Corners",
@@ -55,7 +55,7 @@ function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [exportingEvent, setExportingEvent] = useState<string | null>(null);
-  const [exportingDataset, setExportingDataset] = useState(false);
+  const [datasetJob, setDatasetJob] = useState<DatasetExportJob | null>(null);
   const [reviewingEvent, setReviewingEvent] = useState<string | null>(null);
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
   const [signals, setSignals] = useState<VisualSignal[]>([]);
@@ -110,6 +110,24 @@ function App() {
     }, 700);
     return () => window.clearInterval(timer);
   }, [analysisJob?.id, analysisJob?.status, selected]);
+
+  useEffect(() => {
+    if (!datasetJob || !["queued", "running"].includes(datasetJob.status)) return;
+    const timer = window.setInterval(() => {
+      void api.getDatasetExport(datasetJob.id).then((job) => {
+        setDatasetJob(job);
+        if (job.status === "completed" && job.result) {
+          const categories = Object.entries(job.result.label_counts)
+            .sort(([left], [right]) => left.localeCompare(right))
+            .map(([label, count]) => `${label}: ${count}`)
+            .join(" · ");
+          setNotice(`Dataset listo: ${job.result.clips} clips de ${job.result.matches} partidos (${categories}). Guardado en: ${job.result.path}`);
+        }
+        if (job.status === "failed") setError(job.error ?? "No se pudo preparar el dataset");
+      }).catch((reason: Error) => setError(reason.message));
+    }, 700);
+    return () => window.clearInterval(timer);
+  }, [datasetJob?.id, datasetJob?.status]);
 
   const activeEvents = useMemo(
     () => events.filter((event) => showRejected || event.review_status !== "rejected"),
@@ -220,20 +238,12 @@ function App() {
   };
 
   const exportDataset = async () => {
-    setExportingDataset(true);
     setError("");
     setNotice("");
     try {
-      const result = await api.exportDataset();
-      const categories = Object.entries(result.label_counts)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([label, count]) => `${label}: ${count}`)
-        .join(" · ");
-      setNotice(`Dataset listo: ${result.clips} clips de ${result.matches} partidos (${categories}). Guardado en: ${result.path}`);
+      setDatasetJob(await api.exportDataset());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo preparar el dataset");
-    } finally {
-      setExportingDataset(false);
     }
   };
 
@@ -283,7 +293,7 @@ function App() {
             <section className="match-heading">
               <div><p className="eyebrow">PARTIDO</p><h1>{selected.title}</h1></div>
               <div className="heading-actions">
-                <button className="dataset-button" disabled={exportingDataset} onClick={() => void exportDataset()}>{exportingDataset ? "Preparando dataset…" : "Preparar dataset"}</button>
+                <button className="dataset-button" disabled={datasetJob?.status === "queued" || datasetJob?.status === "running"} onClick={() => void exportDataset()}>{datasetJob?.status === "queued" || datasetJob?.status === "running" ? `Preparando… ${Math.round(datasetJob.progress * 100)}%` : "Preparar dataset"}</button>
                 <button className="analysis-button" disabled={analysisJob?.status === "queued" || analysisJob?.status === "running"} onClick={() => void startAnalysis()}>{analysisJob?.status === "completed" ? "Analizar de nuevo" : "Analizar partido"}</button>
                 <button className="secondary" onClick={() => setShowEvent(true)}>+ Nueva etiqueta</button>
               </div>

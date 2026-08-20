@@ -1,13 +1,18 @@
 import json
 import re
 from collections import Counter
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Lock
 from uuid import uuid4
 
 from futbol_video_analyst.clips import ClipExportError, FFmpegClipExporter
 from futbol_video_analyst.domain import (
     DatasetExport,
+    DatasetExportJob,
+    DatasetExportStatus,
     Event,
     EventSource,
     Match,
@@ -43,6 +48,7 @@ class LocalDatasetExporter:
         matches: list[Match],
         events_by_match: dict[str, list[Event]],
         destination_root: Path,
+        on_progress: Callable[[int, int], None] | None = None,
     ) -> DatasetExport:
         selected: list[tuple[Match, Event, str]] = []
         skipped_events = 0
@@ -58,6 +64,9 @@ class LocalDatasetExporter:
             raise DatasetExportError(
                 "No hay etiquetas listas. Confirma, reclasifica o agrega momentos manuales primero."
             )
+
+        if on_progress:
+            on_progress(0, len(selected))
 
         missing = sorted(
             {str(Path(match.video_path)) for match, _, _ in selected if not Path(match.video_path).is_file()}
@@ -102,6 +111,8 @@ class LocalDatasetExporter:
                     }
                     manifest.write(json.dumps(record, ensure_ascii=False) + "\n")
                     label_counts[label] += 1
+                    if on_progress:
+                        on_progress(sum(label_counts.values()), len(selected))
         except (OSError, ClipExportError) as error:
             raise DatasetExportError(
                 f"No se pudo completar el dataset. Los archivos parciales quedaron en {destination}"
@@ -127,3 +138,71 @@ class LocalDatasetExporter:
             skipped_events=skipped_events,
             label_counts=dict(label_counts),
         )
+
+
+class DatasetExportCoordinator:
+    def __init__(self, exporter: LocalDatasetExporter, destination_root: Path) -> None:
+        self.exporter = exporter
+        self.destination_root = destination_root
+        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="dataset-export")
+        self.jobs: dict[str, DatasetExportJob] = {}
+        self.lock = Lock()
+
+    def start(
+        self, matches: list[Match], events_by_match: dict[str, list[Event]]
+    ) -> DatasetExportJob:
+        with self.lock:
+            active = next(
+                (
+                    job
+                    for job in self.jobs.values()
+                    if job.status in {DatasetExportStatus.QUEUED, DatasetExportStatus.RUNNING}
+                ),
+                None,
+            )
+            if active:
+                return active.model_copy(deep=True)
+            job = DatasetExportJob(
+                id=str(uuid4()),
+                status=DatasetExportStatus.QUEUED,
+                progress=0,
+                clips_processed=0,
+                total_clips=0,
+            )
+            self.jobs[job.id] = job
+        self.executor.submit(self._run, job.id, matches, events_by_match)
+        return job.model_copy(deep=True)
+
+    def get(self, job_id: str) -> DatasetExportJob | None:
+        with self.lock:
+            job = self.jobs.get(job_id)
+            return job.model_copy(deep=True) if job else None
+
+    def _run(
+        self, job_id: str, matches: list[Match], events_by_match: dict[str, list[Event]]
+    ) -> None:
+        def report(processed: int, total: int) -> None:
+            with self.lock:
+                job = self.jobs[job_id]
+                job.status = DatasetExportStatus.RUNNING
+                job.clips_processed = processed
+                job.total_clips = total
+                job.progress = processed / total if total else 0
+
+        try:
+            result = self.exporter.export(
+                matches, events_by_match, self.destination_root, on_progress=report
+            )
+            with self.lock:
+                job = self.jobs[job_id]
+                job.status = DatasetExportStatus.COMPLETED
+                job.progress = 1
+                job.result = result
+        except Exception as error:  # noqa: BLE001 - expose background export failures
+            with self.lock:
+                job = self.jobs[job_id]
+                job.status = DatasetExportStatus.FAILED
+                job.error = str(error)
+
+    def shutdown(self) -> None:
+        self.executor.shutdown(wait=False, cancel_futures=True)

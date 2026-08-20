@@ -79,3 +79,13 @@ export interface DatasetExport {
   skipped_events: number;
   label_counts: Record<string, number>;
 }
+
+export interface DatasetExportJob {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed";
+  progress: number;
+  clips_processed: number;
+  total_clips: number;
+  error: string | null;
+  result: DatasetExport | null;
+}

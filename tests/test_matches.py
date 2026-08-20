@@ -171,10 +171,19 @@ def test_exports_reviewed_events_as_a_grouped_training_dataset(tmp_path: Path) -
             },
         )
 
-        response = client.post("/dataset/export")
+        started = client.post("/dataset/export")
+        job = started.json()
+        for _ in range(50):
+            job = client.get(f"/dataset/export/{job['id']}").json()
+            if job["status"] in {"completed", "failed"}:
+                break
+            time.sleep(0.01)
 
-    assert response.status_code == 200
-    result = response.json()
+    assert started.status_code == 202
+    assert job["status"] == "completed"
+    assert job["progress"] == 1
+    result = job["result"]
+    assert result is not None
     assert result["clips"] == 3
     assert result["matches"] == 1
     assert result["skipped_events"] == 1

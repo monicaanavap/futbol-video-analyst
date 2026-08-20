@@ -152,3 +152,20 @@ class DatasetExport(BaseModel):
     matches: int = Field(ge=0)
     skipped_events: int = Field(ge=0)
     label_counts: dict[str, int]
+
+
+class DatasetExportStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class DatasetExportJob(BaseModel):
+    id: str
+    status: DatasetExportStatus
+    progress: float = Field(ge=0, le=1)
+    clips_processed: int = Field(ge=0)
+    total_clips: int = Field(ge=0)
+    error: str | None = None
+    result: DatasetExport | None = None

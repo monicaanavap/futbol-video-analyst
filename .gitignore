@@ -11,7 +11,9 @@ apps/desktop/src-tauri/target/
 apps/desktop/src-tauri/gen/schemas/
 data/media/*
 data/clips/*
+data/datasets/*
 data/*.sqlite3
 data/*.sqlite3-*
 !data/media/.gitkeep
 !data/clips/.gitkeep
+!data/datasets/.gitkeep

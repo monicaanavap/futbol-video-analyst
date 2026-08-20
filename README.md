@@ -127,7 +127,8 @@ descartados se guardan como ejemplos `negative` y los candidatos todavía sin re
 se omiten. Cada exportación crea una carpeta nueva bajo `data/datasets`, separa los
 clips por partido y categoría, y agrega `manifest.jsonl` y `summary.json`. El
 identificador de partido del manifiesto permitirá dividir entrenamiento y prueba sin
-mezclar clips del mismo video.
+mezclar clips del mismo video. La preparación corre en segundo plano y el botón muestra
+su porcentaje para que una exportación larga no bloquee ni desconecte la aplicación.
 
 ## Pruebas
 
