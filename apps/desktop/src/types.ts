@@ -70,3 +70,12 @@ export interface VisualSignal {
   ball_candidates: number;
   line_ratio: number;
 }
+
+export interface DatasetExport {
+  path: string;
+  manifest_path: string;
+  clips: number;
+  matches: number;
+  skipped_events: number;
+  label_counts: Record<string, number>;
+}

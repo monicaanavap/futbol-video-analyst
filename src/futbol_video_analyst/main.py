@@ -12,8 +12,10 @@ from futbol_video_analyst.analysis import AnalysisCoordinator, VisualSignalAnaly
 from futbol_video_analyst.clips import ClipExportError, FFmpegClipExporter
 from futbol_video_analyst.config import settings
 from futbol_video_analyst.database import Database
+from futbol_video_analyst.dataset import DatasetExportError, LocalDatasetExporter
 from futbol_video_analyst.domain import (
     AnalysisJob,
+    DatasetExport,
     Event,
     EventCreate,
     EventReview,
@@ -32,9 +34,11 @@ def create_app(
     clips_dir: Path | None = None,
     clip_exporter: FFmpegClipExporter | None = None,
     visual_analyzer: VisualSignalAnalyzer | None = None,
+    datasets_dir: Path | None = None,
 ) -> FastAPI:
     database = Database(database_path or settings.database_path)
     local_clips_dir = clips_dir or settings.clips_dir
+    local_datasets_dir = datasets_dir or settings.datasets_dir
     analysis_coordinator = AnalysisCoordinator(database, visual_analyzer)
 
     @asynccontextmanager
@@ -43,6 +47,9 @@ def create_app(
         application.state.database = database
         application.state.video_inspector = video_inspector or FFprobeVideoInspector()
         application.state.clip_exporter = clip_exporter or FFmpegClipExporter()
+        application.state.dataset_exporter = LocalDatasetExporter(
+            application.state.clip_exporter
+        )
         application.state.analysis_coordinator = analysis_coordinator
         yield
         analysis_coordinator.shutdown()
@@ -200,6 +207,19 @@ def create_app(
             media_type="video/mp4",
             headers={"X-Exported-Path": str(destination.resolve())},
         )
+
+    @application.post("/dataset/export", response_model=DatasetExport, tags=["dataset"])
+    def export_dataset(request: Request) -> DatasetExport:
+        matches = request.app.state.database.list_matches()
+        events_by_match = {
+            match.id: request.app.state.database.list_events(match.id) for match in matches
+        }
+        try:
+            return request.app.state.dataset_exporter.export(
+                matches, events_by_match, local_datasets_dir
+            )
+        except DatasetExportError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
     @application.post(
         "/matches/{match_id}/analysis",

@@ -55,6 +55,7 @@ function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [exportingEvent, setExportingEvent] = useState<string | null>(null);
+  const [exportingDataset, setExportingDataset] = useState(false);
   const [reviewingEvent, setReviewingEvent] = useState<string | null>(null);
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
   const [signals, setSignals] = useState<VisualSignal[]>([]);
@@ -218,6 +219,24 @@ function App() {
     }
   };
 
+  const exportDataset = async () => {
+    setExportingDataset(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api.exportDataset();
+      const categories = Object.entries(result.label_counts)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([label, count]) => `${label}: ${count}`)
+        .join(" · ");
+      setNotice(`Dataset listo: ${result.clips} clips de ${result.matches} partidos (${categories}). Guardado en: ${result.path}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo preparar el dataset");
+    } finally {
+      setExportingDataset(false);
+    }
+  };
+
   const fieldSamples = signals.filter((signal) => signal.likely_field).length;
   const strongChanges = signals.filter((signal) => signal.change_score >= 0.18).length;
   const averagePlayers = signals.length
@@ -264,6 +283,7 @@ function App() {
             <section className="match-heading">
               <div><p className="eyebrow">PARTIDO</p><h1>{selected.title}</h1></div>
               <div className="heading-actions">
+                <button className="dataset-button" disabled={exportingDataset} onClick={() => void exportDataset()}>{exportingDataset ? "Preparando dataset…" : "Preparar dataset"}</button>
                 <button className="analysis-button" disabled={analysisJob?.status === "queued" || analysisJob?.status === "running"} onClick={() => void startAnalysis()}>{analysisJob?.status === "completed" ? "Analizar de nuevo" : "Analizar partido"}</button>
                 <button className="secondary" onClick={() => setShowEvent(true)}>+ Nueva etiqueta</button>
               </div>

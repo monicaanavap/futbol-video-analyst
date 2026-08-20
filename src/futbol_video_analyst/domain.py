@@ -143,3 +143,12 @@ class VisualSignal(BaseModel):
     player_candidates: int = Field(default=0, ge=0)
     ball_candidates: int = Field(default=0, ge=0)
     line_ratio: float = Field(default=0, ge=0, le=1)
+
+
+class DatasetExport(BaseModel):
+    path: str
+    manifest_path: str
+    clips: int = Field(ge=0)
+    matches: int = Field(ge=0)
+    skipped_events: int = Field(ge=0)
+    label_counts: dict[str, int]

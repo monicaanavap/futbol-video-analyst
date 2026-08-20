@@ -32,6 +32,9 @@ h2 { font-size: 20px; }
 .analysis-button { border: 1px solid #376449; border-radius: 9px; padding: 10px 15px; color: #9ee2bd; font-weight: 700; background: #173024; }
 .analysis-button:hover { border-color: #66d49a; }
 .analysis-button:disabled { cursor: wait; opacity: .55; }
+.dataset-button { border: 1px solid #455369; border-radius: 9px; padding: 10px 15px; color: #c4d5f1; font-weight: 700; background: #1a2331; }
+.dataset-button:hover { border-color: #7189ad; }
+.dataset-button:disabled { cursor: wait; opacity: .55; }
 .video-panel { padding: 9px 9px 17px; border: 1px solid #28372f; border-radius: 15px; background: #121a17; box-shadow: 0 18px 50px rgba(0,0,0,.25); }
 video { width: 100%; max-height: 56vh; display: block; border-radius: 10px; background: #030504; }
 .timeline { height: 20px; position: relative; margin: 11px 8px 0; }

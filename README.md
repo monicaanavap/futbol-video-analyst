@@ -73,6 +73,7 @@ El motor local ya permite:
 6. Ejecutar un primer análisis visual local con progreso y señales por muestra.
 7. Proponer corners candidatos, confirmarlos o descartarlos desde la línea de tiempo.
 8. Editar tipo, momento, intervalo y notas de cualquier etiqueta, o eliminarla.
+9. Preparar un dataset local con clips agrupados por partido y categoría.
 
 Ejemplo para importar un partido:
 
@@ -119,6 +120,14 @@ u otro evento antes de confirmarlo. La aplicación conserva internamente el tipo
 original propuesto para que esa corrección también mejore el detector de corners.
 Un evento descartado ofrece `Reclasificar`: guardar el tipo real y confirmarlo es
 una sola operación, sin tener que restaurarlo primero como corner.
+
+El botón `Preparar dataset` recorta en una sola operación todas las etiquetas
+manuales, los candidatos confirmados y los eventos reclasificados. Los candidatos
+descartados se guardan como ejemplos `negative` y los candidatos todavía sin revisar
+se omiten. Cada exportación crea una carpeta nueva bajo `data/datasets`, separa los
+clips por partido y categoría, y agrega `manifest.jsonl` y `summary.json`. El
+identificador de partido del manifiesto permitirá dividir entrenamiento y prueba sin
+mezclar clips del mismo video.
 
 ## Pruebas
 

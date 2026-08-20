@@ -1,3 +1,4 @@
+import json
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -51,6 +52,7 @@ def make_client(tmp_path: Path) -> TestClient:
             clips_dir=tmp_path / "clips",
             clip_exporter=FakeClipExporter(),
             visual_analyzer=FakeVisualAnalyzer(),
+            datasets_dir=tmp_path / "datasets",
         )
     )
 
@@ -123,6 +125,64 @@ def test_exports_the_event_interval_as_a_clip(tmp_path: Path) -> None:
     assert response.headers["content-disposition"].startswith("attachment")
     assert response.headers["x-exported-path"].endswith(".mp4")
     assert response.content.endswith(b":10.0:25.0")
+
+
+def test_exports_reviewed_events_as_a_grouped_training_dataset(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        match_id = import_match(client, tmp_path)["id"]
+        client.post(
+            f"/matches/{match_id}/events",
+            json={"type": "corner", "start_seconds": 10, "peak_seconds": 15, "end_seconds": 22},
+        )
+        confirmed = client.post(
+            f"/matches/{match_id}/events",
+            json={
+                "type": "penalty",
+                "start_seconds": 30,
+                "peak_seconds": 35,
+                "end_seconds": 42,
+                "source": "detector",
+            },
+        ).json()
+        client.patch(
+            f"/events/{confirmed['id']}/review", json={"review_status": "confirmed"}
+        )
+        rejected = client.post(
+            f"/matches/{match_id}/events",
+            json={
+                "type": "corner",
+                "start_seconds": 45,
+                "peak_seconds": 50,
+                "end_seconds": 58,
+                "source": "detector",
+            },
+        ).json()
+        client.patch(
+            f"/events/{rejected['id']}/review", json={"review_status": "rejected"}
+        )
+        client.post(
+            f"/matches/{match_id}/events",
+            json={
+                "type": "corner",
+                "start_seconds": 60,
+                "peak_seconds": 65,
+                "end_seconds": 72,
+                "source": "detector",
+            },
+        )
+
+        response = client.post("/dataset/export")
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["clips"] == 3
+    assert result["matches"] == 1
+    assert result["skipped_events"] == 1
+    assert result["label_counts"] == {"corner": 1, "negative": 1, "penalty": 1}
+    records = [json.loads(line) for line in Path(result["manifest_path"]).read_text().splitlines()]
+    assert {record["label"] for record in records} == {"corner", "penalty", "negative"}
+    assert len({record["match_id"] for record in records}) == 1
+    assert all((Path(result["path"]) / record["clip_path"]).is_file() for record in records)
 
 
 def test_edits_and_deletes_an_event(tmp_path: Path) -> None:
