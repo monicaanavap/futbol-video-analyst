@@ -12,8 +12,12 @@ apps/desktop/src-tauri/gen/schemas/
 data/media/*
 data/clips/*
 data/datasets/*
+data/training_cache/*
 data/*.sqlite3
 data/*.sqlite3-*
 !data/media/.gitkeep
 !data/clips/.gitkeep
 !data/datasets/.gitkeep
+!data/training_cache/.gitkeep
+models/*
+!models/.gitkeep

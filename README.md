@@ -136,6 +136,24 @@ su porcentaje para que una exportación larga no bloquee ni desconecte la aplica
 pytest
 ```
 
+## Entrenamiento experimental
+
+El primer entrenador local aprende `corner` contra `negative` usando R3D-18
+preentrenado en Kinetics-400 como extractor congelado y una cabeza lineal. La
+separación se hace por partido completo para evitar fuga de información.
+
+```bash
+pip install -e '.[training]'
+python -m futbol_video_analyst.training \
+  --dataset data/datasets/dataset-AAAAMMDD-HHMMSS-ID \
+  --task corner
+```
+
+Las características se conservan en `data/training_cache` para acelerar ejecuciones
+posteriores. Los pesos `.pt` quedan locales en `models` y cada versión genera también
+un JSON con métricas y el partido usado para validación. Un modelo nuevo es
+experimental y no se activa automáticamente dentro de la aplicación.
+
 ## Alcance sugerido del primer MVP
 
 Empezaremos con un evento que pueda medirse bien: tiros de esquina. Cada etiqueta
