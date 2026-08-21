@@ -138,7 +138,7 @@ pytest
 
 ## Entrenamiento experimental
 
-El primer entrenador local aprende `corner` contra `negative` usando R3D-18
+El primer entrenador local aprende `corner` contra todas las demás etiquetas usando R3D-18
 preentrenado en Kinetics-400 como extractor congelado y una cabeza lineal. La
 separación se hace por partido completo para evitar fuga de información.
 

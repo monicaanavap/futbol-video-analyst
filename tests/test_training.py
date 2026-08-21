@@ -13,7 +13,7 @@ def write_manifest(dataset: Path) -> None:
         (
             "second",
             "Segundo",
-            ["corner", "corner", "corner", "negative", "negative", "negative", "negative", "negative"],
+            ["corner", "corner", "corner", "negative", "negative", "negative", "negative", "foul"],
         ),
     ]:
         for index, label in enumerate(labels):
@@ -44,6 +44,7 @@ def test_loads_and_splits_examples_by_complete_match(tmp_path: Path) -> None:
 
     assert {example.match_id for example in training} == {"second"}
     assert {example.match_id for example in validation} == {"first"}
+    assert next(example for example in examples if example.clip_path.parent.name == "foul").label == 0
 
 
 def test_requires_more_than_one_match(tmp_path: Path) -> None:

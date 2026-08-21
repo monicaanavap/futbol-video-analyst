@@ -29,8 +29,6 @@ def load_examples(dataset: Path) -> list[TrainingExample]:
     examples: list[TrainingExample] = []
     for line_number, line in enumerate(manifest_path.read_text(encoding="utf-8").splitlines(), 1):
         record = json.loads(line)
-        if record["label"] not in {"corner", "negative"}:
-            continue
         clip_path = dataset / record["clip_path"]
         if not clip_path.is_file():
             raise ValueError(f"Falta el clip de la línea {line_number}: {clip_path}")
@@ -45,7 +43,7 @@ def load_examples(dataset: Path) -> list[TrainingExample]:
             )
         )
     if not examples:
-        raise ValueError("El dataset no contiene corners ni negativos")
+        raise ValueError("El dataset no contiene etiquetas")
     return examples
 
 
@@ -139,14 +137,25 @@ def extract_embeddings(
 ) -> np.ndarray:
     torch, weights_type, model_factory = _ml()
     ids = np.array([example.event_id for example in examples])
+    cached_by_id: dict[str, np.ndarray] = {}
     if cache_path.is_file():
         cached = np.load(cache_path)
-        if np.array_equal(cached["event_ids"], ids):
+        cached_by_id = {
+            str(event_id): embedding
+            for event_id, embedding in zip(cached["event_ids"], cached["embeddings"])
+        }
+        if all(event_id in cached_by_id for event_id in ids):
             print(f"Usando características guardadas en {cache_path}", flush=True)
-            return cached["embeddings"]
+            return np.stack([cached_by_id[event_id] for event_id in ids])
+
+    missing_examples = [example for example in examples if example.event_id not in cached_by_id]
 
     device = _device(torch, requested_device)
-    print(f"Extrayendo características R3D-18 en {device}", flush=True)
+    print(
+        f"Reutilizando {len(examples) - len(missing_examples)} características; "
+        f"extrayendo {len(missing_examples)} con R3D-18 en {device}",
+        flush=True,
+    )
     weights = weights_type.DEFAULT
     model = model_factory(weights=weights)
     model.fc = torch.nn.Identity()
@@ -165,16 +174,22 @@ def extract_embeddings(
         embeddings.extend(result)
         batch.clear()
 
-    for index, example in enumerate(examples, 1):
+    for index, example in enumerate(missing_examples, 1):
         frames = _sample_clip(example)
         tensor = torch.from_numpy(frames.copy()).permute(0, 3, 1, 2)
         batch.append(transform(tensor))
         if len(batch) == batch_size:
             process_batch()
-        print(f"Características {index}/{len(examples)}", end="\r", flush=True)
+        print(f"Características {index}/{len(missing_examples)}", end="\r", flush=True)
     process_batch()
     print()
-    matrix = np.stack(embeddings).astype(np.float32)
+    cached_by_id.update(
+        {
+            example.event_id: embedding
+            for example, embedding in zip(missing_examples, embeddings)
+        }
+    )
+    matrix = np.stack([cached_by_id[event_id] for event_id in ids]).astype(np.float32)
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(cache_path, event_ids=ids, embeddings=matrix)
     return matrix
