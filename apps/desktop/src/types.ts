@@ -1,4 +1,4 @@
-export type EventType = "corner" | "throw_in" | "penalty" | "goal" | "shot" | "foul" | "custom";
+export type EventType = "corner" | "goal_kick" | "throw_in" | "penalty" | "goal" | "free_kick" | "shot_attempt" | "foul" | "custom";
 
 export interface Match {
   id: string;
@@ -50,7 +50,7 @@ export interface AnalysisJob {
   id: string;
   match_id: string;
   status: "queued" | "running" | "completed" | "failed";
-  stage: "queued" | "sampling" | "refining" | "completed" | "failed";
+  stage: "queued" | "sampling" | "scoring" | "refining" | "completed" | "failed";
   progress: number;
   samples_processed: number;
   error: string | null;

@@ -23,8 +23,12 @@ dev = [
   "ruff>=0.9,<1",
 ]
 training = [
+  "timm>=1.0,<2",
   "torch>=2.6,<3",
   "torchvision>=0.21,<1",
+]
+external-data = [
+  "SoccerNet>=0.1.62,<0.2",
 ]
 
 [tool.hatch.build.targets.wheel]

@@ -25,7 +25,7 @@ Los clips son derivados opcionales: FFmpeg recodifica únicamente el intervalo
 generan clips para todas las etiquetas automáticamente, evitando procesamiento y
 uso de disco innecesarios.
 
-## Pipeline visual inicial
+## Pipeline visual inicial y transición temporal
 
 El análisis corre en un único worker local para no saturar la computadora del
 coach. Los trabajos y su progreso se guardan en SQLite. OpenCV toma una muestra
@@ -44,6 +44,24 @@ aplicación. Los candidatos usan heurísticas abiertas y pueden producir falsos
 positivos. El detector temporal combina estas señales para proponer etiquetas que
 siempre requieren revisión humana.
 
+El siguiente detector experimental usa action spotting de partido completo. Muestra
+el video a 2 fps, codifica cada cuadro con RegNetY-200MF y pasa secuencias de 128
+cuadros por una BiGRU bidireccional. La salida contiene una probabilidad y un ajuste
+temporal por clase para `corner`, `goal_kick` y `shot_attempt`. Las ventanas duran 64
+segundos y se solapan 32 segundos; el solapamiento se fusiona antes de buscar máximos
+locales y aplicar supresión temporal por clase.
+
+```text
+Video -> muestreo 2 fps -> RegNetY-200MF -> BiGRU temporal
+      -> probabilidades/offsets -> umbrales por clase -> máximos + NMS
+      -> candidatos revisables
+```
+
+El clasificador R3D-18 y las reglas actuales permanecen como baseline y respaldo
+hasta que el nuevo detector supere una evaluación reproducible en partidos completos.
+Los checkpoints de transmisión y cámara táctica serán distintos aunque compartan el
+mismo contrato de salida.
+
 ## Detector temporal de corners
 
 La primera regla temporal propone un corner cuando una muestra estable combina
@@ -61,7 +79,7 @@ entre el inicio de movimiento y el contacto probable con el balón, calibrados c
 el primer corner real revisado (`7:13` de movimiento, `7:15` de saque).
 
 La revisión admite corregir el tipo de evento (por ejemplo, convertir un corner
-candidato en tiro), notas e intervalo antes de confirmar, así como eliminar una
+candidato en tiro libre o intento de gol), notas e intervalo antes de confirmar, así como eliminar una
 etiqueta. Los descartes permanecen en SQLite para auditoría y pueden restaurarse.
 La exportación nativa limita la copia a archivos generados dentro de `data/clips`
 y exige un destino MP4 elegido mediante el diálogo de Tauri.
@@ -103,3 +121,22 @@ el cuerpo tecnico pueda verificar el resultado rapidamente.
 La aplicación procesa todo en la computadora del coach. El video no se copia a la
 base ni se envía por red. Una cola persistente local permitirá recuperar trabajos
 interrumpidos sin necesitar Redis ni infraestructura en la nube.
+
+## Evaluación y procedencia
+
+La métrica principal se calcula por clase con emparejamiento one-to-one de eventos a
+una tolerancia de 1, 2 y 5 segundos. Se reportan precision, recall, F1, falsos tags y
+eventos perdidos por 90 minutos, además del error temporal mediano y percentil 90.
+Los splits se hacen por partido completo; ventanas adyacentes del mismo partido no
+pueden quedar en entrenamiento y validación.
+
+SoccerNet-v2 se limita a experimentación no comercial. SoccerTrack v2 y los videos
+propios con derechos adecuados alimentarán el camino comercial. La procedencia y la
+elegibilidad comercial forman parte del manifiesto de cada dataset y del snapshot de
+cada entrenamiento.
+
+La pista experimental compara cabezas temporales BiGRU y TCN sobre los mismos
+embeddings RegNetY y los mismos splits por partido. La TCN usa convoluciones
+dilatadas bidireccionales: puede aprovechar contexto futuro porque el producto
+procesa partidos terminados, no video en vivo. Ningún checkpoint derivado de
+SoccerNet se activa en la aplicación comercial.

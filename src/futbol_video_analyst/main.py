@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
-from futbol_video_analyst.analysis import AnalysisCoordinator, VisualSignalAnalyzer
+from futbol_video_analyst.analysis import AnalysisCoordinator, CornerSpotter, VisualSignalAnalyzer
 from futbol_video_analyst.clips import ClipExportError, FFmpegClipExporter
 from futbol_video_analyst.config import settings
 from futbol_video_analyst.database import Database
@@ -25,6 +25,9 @@ from futbol_video_analyst.domain import (
     MatchImport,
     VisualSignal,
 )
+from futbol_video_analyst.research_spotting import ResearchAssistedCornerSpotter
+from futbol_video_analyst.spotting import NeuralCornerSpotter
+from futbol_video_analyst.temporal import TemporalCornerSpotter
 from futbol_video_analyst.video import FFprobeVideoInspector, VideoInspectionError
 
 
@@ -35,11 +38,46 @@ def create_app(
     clip_exporter: FFmpegClipExporter | None = None,
     visual_analyzer: VisualSignalAnalyzer | None = None,
     datasets_dir: Path | None = None,
+    neural_spotter: CornerSpotter | None = None,
+    temporal_spotter: TemporalCornerSpotter | None = None,
+    research_spotter: CornerSpotter | None = None,
 ) -> FastAPI:
     database = Database(database_path or settings.database_path)
     local_clips_dir = clips_dir or settings.clips_dir
     local_datasets_dir = datasets_dir or settings.datasets_dir
-    analysis_coordinator = AnalysisCoordinator(database, visual_analyzer)
+    local_neural_spotter = neural_spotter
+    if local_neural_spotter is None and visual_analyzer is None and settings.corner_model_enabled:
+        local_neural_spotter = NeuralCornerSpotter(
+            settings.corner_model_path, settings.corner_model_device
+        )
+    local_temporal_spotter = temporal_spotter
+    if (
+        local_temporal_spotter is None
+        and visual_analyzer is None
+        and settings.corner_temporal_model_enabled
+    ):
+        local_temporal_spotter = TemporalCornerSpotter(settings.corner_temporal_model_path)
+    analysis_coordinator = AnalysisCoordinator(
+        database, visual_analyzer, local_neural_spotter, local_temporal_spotter
+    )
+    local_research_spotter = research_spotter
+    if (
+        local_research_spotter is None
+        and visual_analyzer is None
+        and settings.research_assisted_enabled
+        and settings.research_model_path.is_file()
+    ):
+        local_research_spotter = ResearchAssistedCornerSpotter(
+            settings.research_model_path,
+            settings.research_cache_dir,
+            settings.research_model_device,
+            settings.research_model_threshold,
+        )
+    research_coordinator = (
+        AnalysisCoordinator(database, visual_analyzer, local_research_spotter, None)
+        if local_research_spotter is not None
+        else None
+    )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -51,8 +89,11 @@ def create_app(
             LocalDatasetExporter(application.state.clip_exporter), local_datasets_dir
         )
         application.state.analysis_coordinator = analysis_coordinator
+        application.state.research_coordinator = research_coordinator
         yield
         analysis_coordinator.shutdown()
+        if research_coordinator is not None:
+            research_coordinator.shutdown()
         application.state.dataset_coordinator.shutdown()
 
     application = FastAPI(
@@ -100,12 +141,39 @@ def create_app(
     def list_matches(request: Request) -> list[Match]:
         return request.app.state.database.list_matches()
 
+    @application.get("/matches/deleted", response_model=list[Match], tags=["matches"])
+    def list_deleted_matches(request: Request) -> list[Match]:
+        return request.app.state.database.list_deleted_matches()
+
     @application.get("/matches/{match_id}", response_model=Match, tags=["matches"])
     def get_match(match_id: str, request: Request) -> Match:
         match = request.app.state.database.get_match(match_id)
         if match is None:
             raise HTTPException(status_code=404, detail="Match not found")
         return match
+
+    @application.delete("/matches/{match_id}", status_code=status.HTTP_204_NO_CONTENT)
+    def delete_match(match_id: str, request: Request) -> None:
+        match = request.app.state.database.get_match(match_id)
+        if match is None:
+            raise HTTPException(status_code=404, detail="Match not found")
+        latest_job = request.app.state.database.get_latest_analysis_job(match_id)
+        if latest_job and latest_job.status in {"queued", "running"}:
+            raise HTTPException(status_code=409, detail="No se puede eliminar durante el análisis")
+        request.app.state.database.delete_match(match_id)
+
+    @application.post("/matches/{match_id}/restore", response_model=Match, tags=["matches"])
+    def restore_match(match_id: str, request: Request) -> Match:
+        match = request.app.state.database.get_match(match_id, include_deleted=True)
+        if match is None:
+            raise HTTPException(status_code=404, detail="Partido eliminado no encontrado")
+        if request.app.state.database.get_match(match_id) is not None:
+            raise HTTPException(status_code=409, detail="El partido ya está en la biblioteca")
+        if not request.app.state.database.restore_match(match_id):
+            raise HTTPException(status_code=409, detail="No se pudo recuperar el partido")
+        restored = request.app.state.database.get_match(match_id)
+        assert restored is not None
+        return restored
 
     @application.get("/matches/{match_id}/video", response_class=FileResponse, tags=["matches"])
     def get_match_video(match_id: str, request: Request) -> FileResponse:
@@ -242,6 +310,24 @@ def create_app(
         if match is None:
             raise HTTPException(status_code=404, detail="Match not found")
         return request.app.state.analysis_coordinator.start(match)
+
+    @application.post(
+        "/matches/{match_id}/analysis/research-assisted",
+        response_model=AnalysisJob,
+        status_code=status.HTTP_202_ACCEPTED,
+        tags=["analysis"],
+    )
+    def start_research_assisted_analysis(match_id: str, request: Request) -> AnalysisJob:
+        match = request.app.state.database.get_match(match_id)
+        if match is None:
+            raise HTTPException(status_code=404, detail="Match not found")
+        coordinator = request.app.state.research_coordinator
+        if coordinator is None:
+            raise HTTPException(
+                status_code=503,
+                detail="El modelo de revisión asistida no está habilitado",
+            )
+        return coordinator.start(match)
 
     @application.get("/analysis/{job_id}", response_model=AnalysisJob, tags=["analysis"])
     def get_analysis(job_id: str, request: Request) -> AnalysisJob:

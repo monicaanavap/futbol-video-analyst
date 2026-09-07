@@ -3,7 +3,15 @@ from pathlib import Path
 
 import pytest
 
-from futbol_video_analyst.training import choose_validation_match, load_examples, split_examples
+from futbol_video_analyst.database import Database
+from futbol_video_analyst.domain import VideoMetadata
+from futbol_video_analyst.training import (
+    balance_examples,
+    choose_validation_match,
+    load_background_examples,
+    load_examples,
+    split_examples,
+)
 
 
 def write_manifest(dataset: Path) -> None:
@@ -53,3 +61,81 @@ def test_requires_more_than_one_match(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="al menos dos partidos"):
         choose_validation_match(examples, None)
+
+
+def test_loads_task_specific_positive_labels(tmp_path: Path) -> None:
+    write_manifest(tmp_path)
+    records = [json.loads(line) for line in (tmp_path / "manifest.jsonl").read_text().splitlines()]
+    records[0]["label"] = "shot_attempt"
+    (tmp_path / "manifest.jsonl").write_text(
+        "\n".join(json.dumps(record) for record in records), encoding="utf-8"
+    )
+
+    examples = load_examples(tmp_path, task="shot_attempt")
+
+    assert sum(example.label for example in examples) == 1
+
+
+def test_balances_negatives_per_match(tmp_path: Path) -> None:
+    write_manifest(tmp_path)
+    examples = load_examples(tmp_path)
+
+    balanced = balance_examples(examples, negative_ratio=1)
+
+    for match_id in {example.match_id for example in balanced}:
+        current = [example for example in balanced if example.match_id == match_id]
+        assert sum(example.label == 0 for example in current) == sum(
+            example.label == 1 for example in current
+        )
+
+    with pytest.raises(ValueError, match="al menos uno"):
+        balance_examples(examples, negative_ratio=0)
+
+
+def test_samples_background_away_from_known_corners(tmp_path: Path) -> None:
+    database_path = tmp_path / "training.sqlite3"
+    database = Database(database_path)
+    database.initialize()
+    video = tmp_path / "match.mp4"
+    video.touch()
+    match = database.create_match(
+        "Partido",
+        str(video),
+        VideoMetadata(duration_seconds=600, width=1280, height=720, fps=30, codec="h264"),
+    )
+    record = {
+        "clip_path": "partido/corner/one.mp4",
+        "label": "corner",
+        "match_id": match.id,
+        "match_title": match.title,
+        "event_id": "corner-one",
+        "start_seconds": 52,
+        "peak_seconds": 60,
+    }
+    (tmp_path / "manifest.jsonl").write_text(json.dumps(record), encoding="utf-8")
+
+    examples = load_background_examples(tmp_path, database_path, interval_seconds=120)
+
+    assert [example.peak_in_clip for example in examples] == [180, 300, 420, 540]
+    assert all(example.label == 0 for example in examples)
+
+    with pytest.raises(ValueError, match="mayor que cero"):
+        load_background_examples(tmp_path, database_path, interval_seconds=0)
+
+
+def test_keeps_exported_dataset_usable_after_original_match_is_deleted(tmp_path: Path) -> None:
+    database_path = tmp_path / "training.sqlite3"
+    database = Database(database_path)
+    database.initialize()
+    record = {
+        "clip_path": "partido/corner/one.mp4",
+        "label": "corner",
+        "match_id": "deleted-match",
+        "match_title": "Partido eliminado",
+        "event_id": "corner-one",
+        "start_seconds": 52,
+        "peak_seconds": 60,
+    }
+    (tmp_path / "manifest.jsonl").write_text(json.dumps(record), encoding="utf-8")
+
+    assert load_background_examples(tmp_path, database_path, interval_seconds=120) == []

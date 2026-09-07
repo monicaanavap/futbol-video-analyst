@@ -6,7 +6,14 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from futbol_video_analyst.domain import Match, VideoMetadata, VisualSignal
+from futbol_video_analyst.domain import (
+    EventCreate,
+    EventSource,
+    EventType,
+    Match,
+    VideoMetadata,
+    VisualSignal,
+)
 from futbol_video_analyst.main import create_app
 
 
@@ -44,6 +51,24 @@ class FakeVisualAnalyzer:
         ]
 
 
+class FakeNeuralSpotter:
+    def spot(
+        self, match: Match, on_progress: Callable[[float, int], None]
+    ) -> list[EventCreate]:
+        on_progress(1.0, 3)
+        return [
+            EventCreate(
+                type=EventType.CORNER,
+                start_seconds=12,
+                peak_seconds=20,
+                end_seconds=32,
+                confidence=0.91,
+                source=EventSource.DETECTOR,
+                notes="Candidato neuronal de prueba",
+            )
+        ]
+
+
 def make_client(tmp_path: Path) -> TestClient:
     return TestClient(
         create_app(
@@ -75,12 +100,61 @@ def test_imports_and_lists_a_match(tmp_path: Path) -> None:
     assert response.json() == [created]
 
 
+def test_runs_research_assisted_analysis_separately(tmp_path: Path) -> None:
+    with TestClient(
+        create_app(
+            tmp_path / "test.sqlite3",
+            FakeVideoInspector(),
+            visual_analyzer=FakeVisualAnalyzer(),
+            research_spotter=FakeNeuralSpotter(),
+        )
+    ) as client:
+        match = import_match(client, tmp_path)
+        job = client.post(f"/matches/{match['id']}/analysis/research-assisted").json()
+        for _ in range(50):
+            job = client.get(f"/analysis/{job['id']}").json()
+            if job["status"] in {"completed", "failed"}:
+                break
+            time.sleep(0.01)
+        events = client.get(f"/matches/{match['id']}/events").json()
+
+    assert job["status"] == "completed"
+    assert len(events) == 1
+    assert events[0]["notes"] == "Candidato neuronal de prueba"
+
+
 def test_serves_the_original_video(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         match = import_match(client, tmp_path)
         response = client.get(f"/matches/{match['id']}/video")
     assert response.status_code == 200
     assert response.headers["content-disposition"].startswith("inline")
+
+
+def test_moves_match_to_trash_and_restores_all_its_data(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        match = import_match(client, tmp_path)
+        video_path = Path(str(match["video_path"]))
+        event = client.post(
+            f"/matches/{match['id']}/events",
+            json={"type": "corner", "start_seconds": 10, "peak_seconds": 15, "end_seconds": 22},
+        ).json()
+
+        deleted = client.delete(f"/matches/{match['id']}")
+        matches = client.get("/matches")
+        deleted_matches = client.get("/matches/deleted")
+        hidden_events = client.get(f"/matches/{match['id']}/events")
+        restored = client.post(f"/matches/{match['id']}/restore")
+        events = client.get(f"/matches/{match['id']}/events")
+
+    assert deleted.status_code == 204
+    assert matches.json() == []
+    assert [item["id"] for item in deleted_matches.json()] == [match["id"]]
+    assert hidden_events.status_code == 404
+    assert restored.status_code == 200
+    assert restored.json()["id"] == match["id"]
+    assert [item["id"] for item in events.json()] == [event["id"]]
+    assert video_path.exists()
 
 
 def test_creates_and_filters_manual_events(tmp_path: Path) -> None:
@@ -98,6 +172,29 @@ def test_creates_and_filters_manual_events(tmp_path: Path) -> None:
     assert corner.status_code == 201
     assert corner.json()["source"] == "manual"
     assert [event["type"] for event in filtered.json()] == ["corner"]
+
+
+def test_creates_and_exports_a_goal_kick_training_label(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        match_id = import_match(client, tmp_path)["id"]
+        created = client.post(
+            f"/matches/{match_id}/events",
+            json={
+                "type": "goal_kick",
+                "start_seconds": 20,
+                "peak_seconds": 25,
+                "end_seconds": 32,
+            },
+        )
+        job = client.post("/dataset/export").json()
+        while job["status"] in {"queued", "running"}:
+            time.sleep(0.01)
+            job = client.get(f"/dataset/export/{job['id']}").json()
+
+    assert created.status_code == 201
+    assert created.json()["type"] == "goal_kick"
+    assert job["status"] == "completed"
+    assert job["result"]["label_counts"] == {"goal_kick": 1}
 
 
 def test_rejects_an_event_outside_the_video(tmp_path: Path) -> None:
@@ -280,6 +377,33 @@ def test_runs_visual_analysis_in_the_background(tmp_path: Path) -> None:
     assert signals.json()[0]["likely_field"] is True
     assert events.json()[0]["type"] == "corner"
     assert events.json()[0]["source"] == "detector"
+
+
+def test_uses_neural_spotter_when_it_is_configured(tmp_path: Path) -> None:
+    application = create_app(
+        tmp_path / "neural.sqlite3",
+        FakeVideoInspector(),
+        clips_dir=tmp_path / "clips",
+        clip_exporter=FakeClipExporter(),
+        visual_analyzer=FakeVisualAnalyzer(),
+        datasets_dir=tmp_path / "datasets",
+        neural_spotter=FakeNeuralSpotter(),
+    )
+    with TestClient(application) as client:
+        match_id = import_match(client, tmp_path)["id"]
+        job = client.post(f"/matches/{match_id}/analysis").json()
+        for _ in range(20):
+            job = client.get(f"/analysis/{job['id']}").json()
+            if job["status"] == "completed":
+                break
+            time.sleep(0.01)
+        events = client.get(f"/matches/{match_id}/events").json()
+
+    assert job["status"] == "completed"
+    assert job["samples_processed"] == 4
+    assert len(events) == 1
+    assert events[0]["peak_seconds"] == 20
+    assert events[0]["notes"] == "Candidato neuronal de prueba"
 
 
 def test_confirms_and_rejects_detector_candidates(tmp_path: Path) -> None:

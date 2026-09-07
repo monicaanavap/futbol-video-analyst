@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS matches (
     fps REAL NOT NULL,
     codec TEXT NOT NULL,
     status TEXT NOT NULL,
+    deleted_at TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -89,11 +90,26 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as connection:
             connection.executescript(SCHEMA)
+            match_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(matches)").fetchall()
+            }
+            if "deleted_at" not in match_columns:
+                connection.execute("ALTER TABLE matches ADD COLUMN deleted_at TEXT")
             event_columns = {
                 row["name"] for row in connection.execute("PRAGMA table_info(events)").fetchall()
             }
             if "detected_type" not in event_columns:
                 connection.execute("ALTER TABLE events ADD COLUMN detected_type TEXT")
+            # `shot` was the original catch-all category. Preserve every existing
+            # label while changing its default meaning to the new shot-attempt class.
+            connection.execute(
+                "UPDATE events SET type = ? WHERE type = 'shot'",
+                (EventType.SHOT_ATTEMPT,),
+            )
+            connection.execute(
+                "UPDATE events SET detected_type = ? WHERE detected_type = 'shot'",
+                (EventType.SHOT_ATTEMPT,),
+            )
             connection.execute(
                 "UPDATE events SET detected_type = type WHERE source = ? AND detected_type IS NULL",
                 (EventSource.DETECTOR,),
@@ -151,13 +167,42 @@ class Database:
 
     def list_matches(self) -> list[Match]:
         with self.connect() as connection:
-            rows = connection.execute("SELECT * FROM matches ORDER BY created_at DESC").fetchall()
+            rows = connection.execute(
+                "SELECT * FROM matches WHERE deleted_at IS NULL ORDER BY created_at DESC"
+            ).fetchall()
         return [Match.model_validate(dict(row)) for row in rows]
 
-    def get_match(self, match_id: str) -> Match | None:
+    def list_deleted_matches(self) -> list[Match]:
         with self.connect() as connection:
-            row = connection.execute("SELECT * FROM matches WHERE id = ?", (match_id,)).fetchone()
+            rows = connection.execute(
+                "SELECT * FROM matches WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC"
+            ).fetchall()
+        return [Match.model_validate(dict(row)) for row in rows]
+
+    def get_match(self, match_id: str, *, include_deleted: bool = False) -> Match | None:
+        query = "SELECT * FROM matches WHERE id = ?"
+        if not include_deleted:
+            query += " AND deleted_at IS NULL"
+        with self.connect() as connection:
+            row = connection.execute(query, (match_id,)).fetchone()
         return Match.model_validate(dict(row)) if row else None
+
+    def delete_match(self, match_id: str) -> bool:
+        with self.connect() as connection:
+            result = connection.execute(
+                "UPDATE matches SET deleted_at = CURRENT_TIMESTAMP "
+                "WHERE id = ? AND deleted_at IS NULL",
+                (match_id,),
+            )
+        return result.rowcount > 0
+
+    def restore_match(self, match_id: str) -> bool:
+        with self.connect() as connection:
+            result = connection.execute(
+                "UPDATE matches SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL",
+                (match_id,),
+            )
+        return result.rowcount > 0
 
     def create_event(self, match_id: str, payload: EventCreate) -> Event:
         event_id = str(uuid4())
@@ -261,13 +306,17 @@ class Database:
                 for row in connection.execute(
                     """
                     SELECT peak_seconds FROM events
-                    WHERE match_id = ? AND detected_type = ?
-                      AND (source = ? OR review_status != ?)
+                    WHERE match_id = ? AND (
+                      (type = ? AND source = ? AND review_status != ?)
+                      OR (detected_type = ? AND review_status != ?)
+                    )
                     """,
                     (
                         match_id,
                         EventType.CORNER,
                         EventSource.MANUAL,
+                        ReviewStatus.REJECTED,
+                        EventType.CORNER,
                         ReviewStatus.UNREVIEWED,
                     ),
                 ).fetchall()

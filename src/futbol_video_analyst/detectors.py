@@ -137,6 +137,7 @@ class CornerCandidateDetector:
     """Find conservative corner-like sequences from experimental visual signals."""
 
     cooldown_seconds = 20.0
+    max_candidates = 30
 
     def detect(
         self,
@@ -180,6 +181,12 @@ class CornerCandidateDetector:
                     selected[-1] = (signal, score)
                 continue
             selected.append((signal, score))
+
+        if len(selected) > self.max_candidates:
+            selected = sorted(
+                sorted(selected, key=lambda item: item[1], reverse=True)[: self.max_candidates],
+                key=lambda item: item[0].timestamp_seconds,
+            )
 
         return [
             EventCreate(

@@ -10,6 +10,8 @@ from typing import Any
 import cv2
 import numpy as np
 
+from futbol_video_analyst.database import Database
+
 
 @dataclass(frozen=True)
 class TrainingExample:
@@ -21,7 +23,7 @@ class TrainingExample:
     peak_in_clip: float
 
 
-def load_examples(dataset: Path) -> list[TrainingExample]:
+def load_examples(dataset: Path, task: str = "corner") -> list[TrainingExample]:
     manifest_path = dataset / "manifest.jsonl"
     if not manifest_path.is_file():
         raise ValueError(f"No se encontró {manifest_path}")
@@ -36,7 +38,7 @@ def load_examples(dataset: Path) -> list[TrainingExample]:
             TrainingExample(
                 clip_path=clip_path,
                 event_id=record["event_id"],
-                label=1 if record["label"] == "corner" else 0,
+                label=1 if record["label"] == task else 0,
                 match_id=record["match_id"],
                 match_title=record["match_title"],
                 peak_in_clip=float(record["peak_seconds"]) - float(record["start_seconds"]),
@@ -44,6 +46,57 @@ def load_examples(dataset: Path) -> list[TrainingExample]:
         )
     if not examples:
         raise ValueError("El dataset no contiene etiquetas")
+    return examples
+
+
+def load_background_examples(
+    dataset: Path,
+    database_path: Path,
+    interval_seconds: float,
+    exclusion_seconds: float = 16.0,
+) -> list[TrainingExample]:
+    """Sample ordinary full-match windows so a clip classifier can learn background play."""
+    if interval_seconds <= 0:
+        raise ValueError("El intervalo de fondo debe ser mayor que cero")
+    records = [
+        json.loads(line)
+        for line in (dataset / "manifest.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    match_ids = {record["match_id"] for record in records}
+    corner_peaks: dict[str, list[float]] = {match_id: [] for match_id in match_ids}
+    for record in records:
+        if record["label"] == "corner":
+            corner_peaks[record["match_id"]].append(float(record["peak_seconds"]))
+
+    database = Database(database_path)
+    examples: list[TrainingExample] = []
+    for match_id in sorted(match_ids):
+        match = database.get_match(match_id)
+        if match is None:
+            # Exported event clips remain valid training data even if the user
+            # deletes the original match after preparing the dataset. We only
+            # lose the ability to sample extra background windows for it.
+            continue
+        video_path = Path(match.video_path)
+        if not video_path.is_file():
+            continue
+        timestamp = interval_seconds / 2
+        while timestamp <= match.duration_seconds - 2:
+            if all(
+                abs(timestamp - corner_peak) > exclusion_seconds
+                for corner_peak in corner_peaks[match_id]
+            ):
+                examples.append(
+                    TrainingExample(
+                        clip_path=video_path,
+                        event_id=f"background-{match_id}-{int(timestamp * 1000)}",
+                        label=0,
+                        match_id=match_id,
+                        match_title=match.title,
+                        peak_in_clip=timestamp,
+                    )
+                )
+            timestamp += interval_seconds
     return examples
 
 
@@ -89,6 +142,28 @@ def split_examples(
     return training, validation
 
 
+def balance_examples(
+    examples: list[TrainingExample], negative_ratio: int | None
+) -> list[TrainingExample]:
+    if negative_ratio is None:
+        return examples
+    if negative_ratio < 1:
+        raise ValueError("La proporción de negativos debe ser al menos uno")
+    by_match: dict[str, list[TrainingExample]] = {}
+    for example in examples:
+        by_match.setdefault(example.match_id, []).append(example)
+    balanced: list[TrainingExample] = []
+    for items in by_match.values():
+        positives = [item for item in items if item.label == 1]
+        negatives = [item for item in items if item.label == 0]
+        wanted = min(len(negatives), len(positives) * negative_ratio)
+        if wanted and wanted < len(negatives):
+            indices = np.linspace(0, len(negatives) - 1, wanted, dtype=int)
+            negatives = [negatives[index] for index in indices]
+        balanced.extend(positives + negatives)
+    return balanced
+
+
 def _sample_clip(example: TrainingExample, frames: int = 16, window_seconds: float = 4) -> np.ndarray:
     capture = cv2.VideoCapture(str(example.clip_path))
     if not capture.isOpened():
@@ -98,13 +173,23 @@ def _sample_clip(example: TrainingExample, frames: int = 16, window_seconds: flo
     duration = frame_count / fps if frame_count > 0 else example.peak_in_clip + window_seconds
     half_window = window_seconds / 2
     start = max(0, min(example.peak_in_clip - half_window, max(0, duration - window_seconds)))
-    end = min(duration - 0.001, start + window_seconds)
+    # Container metadata can point just beyond the final decodable frame.
+    end_margin = max(1 / fps, 0.1)
+    end = min(max(0, duration - end_margin), start + window_seconds)
     timestamps = np.linspace(start, end, frames)
     sampled: list[np.ndarray] = []
     try:
+        capture.set(cv2.CAP_PROP_POS_FRAMES, max(0, int(start * fps)))
+        current_frame = max(0, int(capture.get(cv2.CAP_PROP_POS_FRAMES)))
         for timestamp in timestamps:
-            capture.set(cv2.CAP_PROP_POS_MSEC, float(timestamp) * 1000)
-            success, frame = capture.read()
+            target_frame = max(current_frame, int(float(timestamp) * fps))
+            success = True
+            while current_frame <= target_frame:
+                success = capture.grab()
+                if not success:
+                    break
+                current_frame += 1
+            success, frame = capture.retrieve() if success else (False, None)
             if not success:
                 raise ValueError(f"No se pudo leer {example.clip_path} en {timestamp:.2f}s")
             sampled.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
@@ -225,6 +310,7 @@ def train_head(
     training_examples: list[TrainingExample],
     validation_examples: list[TrainingExample],
     requested_device: str,
+    task: str = "corner",
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     torch, _, _ = _ml()
     device = _device(torch, requested_device)
@@ -283,9 +369,31 @@ def train_head(
     with torch.inference_mode():
         validation_probabilities = torch.sigmoid(head(validation_x)).cpu().numpy().reshape(-1)
         training_probabilities = torch.sigmoid(head(train_x)).cpu().numpy().reshape(-1)
+
+    threshold = 0.5
+    validation_metrics = _metrics(validation_probabilities, y_validation, threshold)
+    best_rank = (
+        validation_metrics["f1"],
+        validation_metrics["recall"],
+        validation_metrics["precision"],
+    )
+    for candidate in np.arange(0.525, 0.951, 0.025):
+        candidate_metrics = _metrics(
+            validation_probabilities, y_validation, float(candidate)
+        )
+        candidate_rank = (
+            candidate_metrics["f1"],
+            candidate_metrics["recall"],
+            candidate_metrics["precision"],
+        )
+        if candidate_rank > best_rank:
+            threshold = float(candidate)
+            validation_metrics = candidate_metrics
+            best_rank = candidate_rank
+
     report = {
-        "training": _metrics(training_probabilities, y_train),
-        "validation": _metrics(validation_probabilities, y_validation),
+        "training": _metrics(training_probabilities, y_train, threshold),
+        "validation": validation_metrics,
         "validation_loss": best_loss,
     }
     checkpoint = {
@@ -293,24 +401,44 @@ def train_head(
         "head_state_dict": best_state,
         "feature_mean": torch.from_numpy(mean),
         "feature_standard_deviation": torch.from_numpy(standard_deviation),
-        "label_map": {"negative": 0, "corner": 1},
-        "threshold": 0.5,
+        "label_map": {"negative": 0, task: 1},
+        "threshold": threshold,
         "sampling": {"frames": 16, "window_seconds": 4},
     }
     return checkpoint, report
 
 
-def _next_model_path(models_dir: Path) -> Path:
+def _next_model_path(models_dir: Path, task: str = "corner") -> Path:
+    prefix = task.replace("_", "-")
     versions = []
-    for path in models_dir.glob("corner-spotter-v*.pt"):
+    for path in models_dir.glob(f"{prefix}-spotter-v*.pt"):
         match = re.search(r"v(\d+)\.pt$", path.name)
         if match:
             versions.append(int(match.group(1)))
-    return models_dir / f"corner-spotter-v{max(versions, default=0) + 1:03d}.pt"
+    return models_dir / f"{prefix}-spotter-v{max(versions, default=0) + 1:03d}.pt"
 
 
-def run_training(dataset: Path, models_dir: Path, validation_match: str | None, device: str) -> Path:
-    examples = load_examples(dataset)
+def run_training(
+    dataset: Path,
+    models_dir: Path,
+    validation_match: str | None,
+    device: str,
+    background_interval: float | None = None,
+    database_path: Path = Path("data/futbol-video-analyst.sqlite3"),
+    task: str = "corner",
+    negative_ratio: int | None = None,
+    cache_path: Path | None = None,
+) -> Path:
+    examples = load_examples(dataset, task)
+    background_examples: list[TrainingExample] = []
+    if background_interval is not None:
+        if task != "corner":
+            raise ValueError("El muestreo de fondo automático todavía solo admite corner")
+        background_examples = load_background_examples(
+            dataset, database_path, background_interval
+        )
+        examples.extend(background_examples)
+    examples = balance_examples(examples, negative_ratio)
     validation_match_id = choose_validation_match(examples, validation_match)
     training_examples, validation_examples = split_examples(examples, validation_match_id)
     validation_title = validation_examples[0].match_title
@@ -320,13 +448,15 @@ def run_training(dataset: Path, models_dir: Path, validation_match: str | None, 
         f"validación: {len(validation_examples)} clips de {validation_title}",
         flush=True,
     )
-    cache_path = Path("data/training_cache") / dataset.name / "r3d18-kinetics400.npz"
-    embeddings = extract_embeddings(examples, cache_path, device)
+    embedding_cache = cache_path or (
+        Path("data/training_cache") / dataset.name / "r3d18-kinetics400.npz"
+    )
+    embeddings = extract_embeddings(examples, embedding_cache, device)
     checkpoint, report = train_head(
-        embeddings, examples, training_examples, validation_examples, device
+        embeddings, examples, training_examples, validation_examples, device, task
     )
     models_dir.mkdir(parents=True, exist_ok=True)
-    model_path = _next_model_path(models_dir)
+    model_path = _next_model_path(models_dir, task)
     torch, _, _ = _ml()
     checkpoint["dataset"] = str(dataset.resolve())
     checkpoint["validation_match_id"] = validation_match_id
@@ -334,12 +464,15 @@ def run_training(dataset: Path, models_dir: Path, validation_match: str | None, 
     torch.save(checkpoint, model_path)
     metadata = {
         "model": model_path.name,
+        "task": task,
         "created_at": datetime.now(UTC).isoformat(),
         "dataset": str(dataset.resolve()),
         "training_matches": sorted({item.match_title for item in training_examples}),
         "validation_match": validation_title,
         "training_clips": len(training_examples),
         "validation_clips": len(validation_examples),
+        "background_clips": len(background_examples),
+        "negative_ratio": negative_ratio,
         "metrics": report,
         "experimental": True,
         "activated_in_app": False,
@@ -354,16 +487,25 @@ def run_training(dataset: Path, models_dir: Path, validation_match: str | None, 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Entrena un clasificador local de corners")
     parser.add_argument("--dataset", type=Path, required=True)
-    parser.add_argument("--task", default="corner", choices=["corner"])
+    parser.add_argument("--task", default="corner", choices=["corner", "free_kick", "shot_attempt"])
     parser.add_argument("--models-dir", type=Path, default=Path("models"))
     parser.add_argument("--validation-match")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "mps", "cuda"])
+    parser.add_argument("--background-interval", type=float)
+    parser.add_argument("--negative-ratio", type=int)
+    parser.add_argument("--cache", type=Path)
+    parser.add_argument("--database", type=Path, default=Path("data/futbol-video-analyst.sqlite3"))
     arguments = parser.parse_args()
     run_training(
         arguments.dataset.resolve(),
         arguments.models_dir,
         arguments.validation_match,
         arguments.device,
+        arguments.background_interval,
+        arguments.database,
+        arguments.task,
+        arguments.negative_ratio,
+        arguments.cache,
     )
 
 

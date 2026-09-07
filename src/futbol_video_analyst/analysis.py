@@ -1,6 +1,7 @@
 import math
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from typing import Protocol
 from uuid import uuid4
 
 import cv2
@@ -11,11 +12,24 @@ from futbol_video_analyst.domain import (
     AnalysisJob,
     AnalysisStage,
     AnalysisStatus,
+    EventCreate,
     Match,
     VisualSignal,
 )
 
 ProgressCallback = Callable[[float, int], None]
+
+
+class CornerSpotter(Protocol):
+    def spot(
+        self, match: Match, on_progress: ProgressCallback
+    ) -> list[EventCreate] | None: ...
+
+
+class SignalCornerSpotter(Protocol):
+    def detect(
+        self, match: Match, signals: list[VisualSignal]
+    ) -> list[EventCreate] | None: ...
 
 
 class VideoAnalysisError(RuntimeError):
@@ -129,9 +143,17 @@ class VisualSignalAnalyzer:
 
 
 class AnalysisCoordinator:
-    def __init__(self, database: Database, analyzer: VisualSignalAnalyzer | None = None) -> None:
+    def __init__(
+        self,
+        database: Database,
+        analyzer: VisualSignalAnalyzer | None = None,
+        neural_spotter: CornerSpotter | None = None,
+        temporal_spotter: SignalCornerSpotter | None = None,
+    ) -> None:
         self.database = database
         self.analyzer = analyzer or VisualSignalAnalyzer()
+        self.neural_spotter = neural_spotter
+        self.temporal_spotter = temporal_spotter
         self.corner_detector = CornerCandidateDetector()
         self.corner_refiner = CornerTimestampRefiner()
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="video-analysis")
@@ -154,7 +176,7 @@ class AnalysisCoordinator:
                 job_id,
                 status=AnalysisStatus.RUNNING,
                 stage=AnalysisStage.SAMPLING,
-                progress=progress * 0.9,
+                progress=progress * (0.55 if self.neural_spotter else 0.9),
                 samples_processed=samples,
             )
 
@@ -168,14 +190,38 @@ class AnalysisCoordinator:
             )
             signals = self.analyzer.analyze(match, report)
             self.database.replace_visual_signals(match.id, signals)
-            review_examples = self.database.list_corner_review_examples()
-            candidates = self.corner_detector.detect(match, signals, review_examples)
+            candidates = None
+            temporal_candidates: list[EventCreate] = []
+            if self.temporal_spotter is not None:
+                temporal_candidates = self.temporal_spotter.detect(match, signals)
+                candidates = temporal_candidates
+            if self.neural_spotter is not None:
+
+                def report_scoring(progress: float, windows: int) -> None:
+                    nonlocal samples_processed
+                    samples_processed = len(signals) + windows
+                    self.database.update_analysis_job(
+                        job_id,
+                        status=AnalysisStatus.RUNNING,
+                        stage=AnalysisStage.SCORING,
+                        progress=0.55 + progress * 0.4,
+                        samples_processed=samples_processed,
+                    )
+
+                neural_candidates = self.neural_spotter.spot(match, report_scoring)
+                if neural_candidates is not None:
+                    candidates = merge_spotter_candidates(
+                        temporal_candidates, neural_candidates
+                    )
+            if candidates is None:
+                review_examples = self.database.list_corner_review_examples()
+                candidates = self.corner_detector.detect(match, signals, review_examples)
             self.database.update_analysis_job(
                 job_id,
                 status=AnalysisStatus.RUNNING,
                 stage=AnalysisStage.REFINING,
-                progress=0.92,
-                samples_processed=len(signals),
+                progress=0.96,
+                samples_processed=samples_processed,
             )
             refined_candidates = self.corner_refiner.refine(match, candidates)
             self.database.replace_corner_candidates(match.id, refined_candidates)
@@ -184,7 +230,7 @@ class AnalysisCoordinator:
                 status=AnalysisStatus.COMPLETED,
                 stage=AnalysisStage.COMPLETED,
                 progress=1,
-                samples_processed=len(signals),
+                samples_processed=samples_processed,
             )
         except Exception as error:  # noqa: BLE001 - background failures must be persisted
             self.database.update_analysis_job(
@@ -198,3 +244,17 @@ class AnalysisCoordinator:
 
     def shutdown(self) -> None:
         self.executor.shutdown(wait=False, cancel_futures=True)
+
+
+def merge_spotter_candidates(
+    first: list[EventCreate], second: list[EventCreate], tolerance_seconds: float = 8.0
+) -> list[EventCreate]:
+    """Combine detector results while keeping nearby predictions as one moment."""
+    merged: list[EventCreate] = []
+    for candidate in sorted([*first, *second], key=lambda event: event.peak_seconds):
+        if merged and candidate.peak_seconds - merged[-1].peak_seconds <= tolerance_seconds:
+            if candidate.confidence > merged[-1].confidence:
+                merged[-1] = candidate
+            continue
+        merged.append(candidate)
+    return merged

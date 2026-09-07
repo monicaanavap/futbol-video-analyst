@@ -57,6 +57,22 @@ def test_requires_ball_players_and_lines() -> None:
     assert candidates == []
 
 
+def test_limits_candidates_to_the_highest_scoring_thirty() -> None:
+    signals = [
+        signal(timestamp=index * 25, players=2 + index % 8)
+        for index in range(40)
+    ]
+
+    candidates = CornerCandidateDetector().detect(
+        make_match().model_copy(update={"duration_seconds": 1200}), signals
+    )
+
+    assert len(candidates) == 30
+    assert [candidate.peak_seconds for candidate in candidates] == sorted(
+        candidate.peak_seconds for candidate in candidates
+    )
+
+
 def test_refines_coarse_timestamp_to_strongest_field_motion() -> None:
     timestamp = select_motion_timestamp(
         440,

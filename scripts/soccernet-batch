@@ -1,0 +1,84 @@
+#!/bin/zsh
+
+set -euo pipefail
+
+SCRIPT_DIR=${0:A:h}
+PROJECT_DIR=${SCRIPT_DIR:h}
+PYTHON=${PROJECT_DIR}/.venv/bin/python
+SOURCE=${PROJECT_DIR}/data/external/soccernet-v2
+CACHE=${PROJECT_DIR}/data/training_cache/soccernet-regnety002-2fps-pts-v3
+KEYCHAIN_SERVICE=futbol-video-analyst-soccernet
+
+usage() {
+  print "Uso:"
+  print "  ./scripts/soccernet-batch download RUTA_AL_BATCH.json"
+  print "  ./scripts/soccernet-batch all RUTA_AL_BATCH.json RUTA_AL_DATASET"
+  print ""
+  print "download: descarga únicamente el lote."
+  print "all: descarga, prepara la caché y elimina los videos crudos verificados."
+}
+
+if (( $# < 2 )); then
+  usage
+  exit 2
+fi
+
+MODE=$1
+BATCH_PLAN=${2:A}
+
+if [[ ! -x ${PYTHON} ]]; then
+  print -u2 "No se encontró el entorno Python: ${PYTHON}"
+  print -u2 "Ejecuta primero la instalación del proyecto."
+  exit 1
+fi
+
+if [[ ! -f ${BATCH_PLAN} ]]; then
+  print -u2 "No existe el plan del lote: ${BATCH_PLAN}"
+  exit 1
+fi
+
+if [[ ${MODE} != download && ${MODE} != all ]]; then
+  usage
+  exit 2
+fi
+
+if [[ ${MODE} == all && $# -lt 3 ]]; then
+  usage
+  exit 2
+fi
+
+cd ${PROJECT_DIR}
+
+print "Descargando lote: ${BATCH_PLAN:t}"
+${PYTHON} -m futbol_video_analyst.soccernet_download download \
+  --source ${SOURCE} \
+  --plan ${BATCH_PLAN} \
+  --cache-dir ${CACHE} \
+  --keychain-service ${KEYCHAIN_SERVICE}
+
+if [[ ${MODE} == download ]]; then
+  print "Descarga terminada. Los videos están en: ${SOURCE}"
+  exit 0
+fi
+
+DATASET=${3:A}
+if [[ ! -f ${DATASET}/manifest.jsonl ]]; then
+  print -u2 "No se encontró manifest.jsonl en: ${DATASET}"
+  exit 1
+fi
+
+print "Preparando características compactas..."
+${PYTHON} -m futbol_video_analyst.research_preparation \
+  --dataset ${DATASET} \
+  --cache-dir ${CACHE} \
+  --device mps \
+  --encoder-batch-size 64
+
+print "Eliminando sólo videos que ya tienen una caché válida..."
+${PYTHON} -m futbol_video_analyst.soccernet_download purge \
+  --source ${SOURCE} \
+  --plan ${BATCH_PLAN} \
+  --cache-dir ${CACHE} \
+  --confirm
+
+print "Lote terminado. Puedes ejecutar el siguiente lote cuando quieras."

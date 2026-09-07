@@ -95,6 +95,10 @@ class LocalDatasetExporter:
                         event.start_seconds,
                         event.end_seconds,
                     )
+                    research_assisted = bool(
+                        event.notes
+                        and "soccernet-research-temporal-v005" in event.notes
+                    )
                     record = {
                         "clip_path": relative_path.as_posix(),
                         "label": label,
@@ -108,6 +112,19 @@ class LocalDatasetExporter:
                         "peak_seconds": event.peak_seconds,
                         "end_seconds": event.end_seconds,
                         "notes": event.notes,
+                        "annotation_tier": (
+                            "research_assisted" if research_assisted else "human_reviewed"
+                        ),
+                        "teacher_model": (
+                            "soccernet-research-temporal-v005"
+                            if research_assisted
+                            else None
+                        ),
+                        "commercial_eligibility": (
+                            "requires_license_and_independent_review"
+                            if research_assisted
+                            else "unverified"
+                        ),
                     }
                     manifest.write(json.dumps(record, ensure_ascii=False) + "\n")
                     label_counts[label] += 1

@@ -4,20 +4,24 @@ import type { AnalysisJob, DatasetExportJob, EventDraft, EventType, EventUpdate,
 
 const eventLabels: Record<EventType, string> = {
   corner: "Corners",
+  goal_kick: "Saques de meta",
   throw_in: "Saques de banda",
   penalty: "Penales",
   goal: "Goles",
-  shot: "Tiros",
+  free_kick: "Tiros libres",
+  shot_attempt: "Tiros a portería (intentos de gol)",
   foul: "Faltas",
   custom: "Otros",
 };
 
 const eventColors: Record<EventType, string> = {
   corner: "#f3c969",
+  goal_kick: "#56d7d2",
   throw_in: "#e6a76f",
   penalty: "#ef7d90",
   goal: "#6de0a5",
-  shot: "#75b7f5",
+  free_kick: "#75b7f5",
+  shot_attempt: "#ff6b6b",
   foul: "#d79bf3",
   custom: "#a7b3ab",
 };
@@ -44,12 +48,14 @@ function parseTimeInput(value: string) {
 function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [deletedMatches, setDeletedMatches] = useState<Match[]>([]);
   const [selected, setSelected] = useState<Match | null>(null);
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [filters, setFilters] = useState<Set<EventType>>(new Set(Object.keys(eventLabels) as EventType[]));
   const [showImport, setShowImport] = useState(false);
   const [showEvent, setShowEvent] = useState(false);
   const [showRejected, setShowRejected] = useState(false);
+  const [reviewMode, setReviewMode] = useState(false);
   const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -58,6 +64,10 @@ function App() {
   const [datasetJob, setDatasetJob] = useState<DatasetExportJob | null>(null);
   const [reviewingEvent, setReviewingEvent] = useState<string | null>(null);
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
+  const [analysisMode, setAnalysisMode] = useState<"commercial" | "research">("commercial");
+  const [deletingMatch, setDeletingMatch] = useState(false);
+  const [restoringMatch, setRestoringMatch] = useState<string | null>(null);
+  const [showTrash, setShowTrash] = useState(false);
   const [signals, setSignals] = useState<VisualSignal[]>([]);
   const [engineState, setEngineState] = useState<"starting" | "ready" | "error">("starting");
 
@@ -68,8 +78,12 @@ function App() {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       try {
         await api.health();
-        const result = await api.listMatches();
+        const [result, deleted] = await Promise.all([
+          api.listMatches(),
+          api.listDeletedMatches(),
+        ]);
         setMatches(result);
+        setDeletedMatches(deleted);
         setSelected((current) => current ?? result[0] ?? null);
         setEngineState("ready");
         setLoading(false);
@@ -85,6 +99,7 @@ function App() {
 
   useEffect(() => { void connectToEngine(); }, []);
   useEffect(() => {
+    setReviewMode(false);
     if (!selected) { setEvents([]); setAnalysisJob(null); setSignals([]); return; }
     void api.listEvents(selected.id).then(setEvents).catch((reason: Error) => setError(reason.message));
     void api.latestAnalysis(selected.id)
@@ -103,13 +118,14 @@ function App() {
         if (job.status === "completed" && selected) {
           setSignals(await api.listSignals(selected.id));
           setEvents(await api.listEvents(selected.id));
-          setNotice("Análisis completado; revisa los corners candidatos");
+          setReviewMode(analysisMode === "research");
+          setNotice(analysisMode === "research" ? "Revisión asistida v005 lista; valida los candidatos por bloques" : "Análisis completado; revisa los corners candidatos");
         }
         if (job.status === "failed") setError(job.error ?? "El análisis no pudo completarse");
       });
     }, 700);
     return () => window.clearInterval(timer);
-  }, [analysisJob?.id, analysisJob?.status, selected]);
+  }, [analysisJob?.id, analysisJob?.status, selected, analysisMode]);
 
   useEffect(() => {
     if (!datasetJob || !["queued", "running"].includes(datasetJob.status)) return;
@@ -137,6 +153,13 @@ function App() {
     () => activeEvents.filter((event) => filters.has(event.type)),
     [activeEvents, filters],
   );
+  const pendingReviewEvents = useMemo(
+    () => visibleEvents.filter(
+      (event) => event.source === "detector" && event.review_status === "unreviewed",
+    ),
+    [visibleEvents],
+  );
+  const listedEvents = reviewMode ? pendingReviewEvents.slice(0, 5) : visibleEvents;
 
   const seek = (seconds: number) => {
     if (!videoRef.current) return;
@@ -226,12 +249,13 @@ function App() {
     setNotice("Etiqueta eliminada");
   };
 
-  const startAnalysis = async () => {
+  const startAnalysis = async (mode: "commercial" | "research" = "commercial") => {
     if (!selected) return;
     setError("");
     setSignals([]);
+    setAnalysisMode(mode);
     try {
-      setAnalysisJob(await api.startAnalysis(selected.id));
+      setAnalysisJob(mode === "research" ? await api.startResearchAssistedAnalysis(selected.id) : await api.startAnalysis(selected.id));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo iniciar el análisis");
     }
@@ -244,6 +268,50 @@ function App() {
       setDatasetJob(await api.exportDataset());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "No se pudo preparar el dataset");
+    }
+  };
+
+  const deleteSelectedMatch = async () => {
+    if (!selected) return;
+    const match = selected;
+    const confirmed = window.confirm(
+      `¿Mover "${match.title}" a Partidos eliminados?\n\nEl video, sus etiquetas y sus análisis se conservarán y podrás recuperarlos después.`,
+    );
+    if (!confirmed) return;
+    setDeletingMatch(true);
+    setError("");
+    setNotice("");
+    try {
+      await api.deleteMatch(match.id);
+      const remaining = matches.filter((item) => item.id !== match.id);
+      setMatches(remaining);
+      setDeletedMatches((current) => [match, ...current]);
+      setSelected(remaining[0] ?? null);
+      setEvents([]);
+      setSignals([]);
+      setAnalysisJob(null);
+      setNotice(`Partido movido a eliminados: ${match.title}. Puedes recuperarlo desde la barra lateral.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo eliminar el partido");
+    } finally {
+      setDeletingMatch(false);
+    }
+  };
+
+  const restoreDeletedMatch = async (match: Match) => {
+    setRestoringMatch(match.id);
+    setError("");
+    setNotice("");
+    try {
+      const restored = await api.restoreMatch(match.id);
+      setDeletedMatches((current) => current.filter((item) => item.id !== restored.id));
+      setMatches((current) => [restored, ...current]);
+      setSelected(restored);
+      setNotice(`Partido recuperado con sus etiquetas y análisis: ${restored.title}.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "No se pudo recuperar el partido");
+    } finally {
+      setRestoringMatch(null);
     }
   };
 
@@ -276,6 +344,22 @@ function App() {
             <span>{formatTime(match.duration_seconds)} · {match.height}p</span>
           </button>
         ))}
+        <button
+          className={`trash-toggle ${showTrash ? "active" : ""}`}
+          onClick={() => setShowTrash((value) => !value)}
+        >
+          <span>Partidos eliminados</span><b>{deletedMatches.length}</b>
+        </button>
+        {showTrash && <div className="trash-list">
+          {deletedMatches.length === 0 ? <p className="muted">No hay partidos eliminados.</p> : deletedMatches.map((match) => (
+            <div className="trash-card" key={match.id}>
+              <span><strong>{match.title}</strong><small>{formatTime(match.duration_seconds)} · {match.height}p</small></span>
+              <button disabled={restoringMatch === match.id} onClick={() => void restoreDeletedMatch(match)}>
+                {restoringMatch === match.id ? "Recuperando…" : "Recuperar"}
+              </button>
+            </div>
+          ))}
+        </div>}
       </aside>
 
       <main className="workspace">
@@ -294,8 +378,10 @@ function App() {
               <div><p className="eyebrow">PARTIDO</p><h1>{selected.title}</h1></div>
               <div className="heading-actions">
                 <button className="dataset-button" disabled={datasetJob?.status === "queued" || datasetJob?.status === "running"} onClick={() => void exportDataset()}>{datasetJob?.status === "queued" || datasetJob?.status === "running" ? `Preparando… ${Math.round(datasetJob.progress * 100)}%` : "Preparar dataset"}</button>
-                <button className="analysis-button" disabled={analysisJob?.status === "queued" || analysisJob?.status === "running"} onClick={() => void startAnalysis()}>{analysisJob?.status === "completed" ? "Analizar de nuevo" : "Analizar partido"}</button>
+                <button className="analysis-button" disabled={analysisJob?.status === "queued" || analysisJob?.status === "running"} onClick={() => void startAnalysis("commercial")}>{analysisJob?.status === "completed" && analysisMode === "commercial" ? "Analizar de nuevo" : "Análisis comercial"}</button>
+                <button className="research-analysis-button" disabled={analysisJob?.status === "queued" || analysisJob?.status === "running"} title="Modelo de investigación; sus candidatos requieren validación humana" onClick={() => void startAnalysis("research")}>{analysisJob?.status === "completed" && analysisMode === "research" ? "Revisión asistida de nuevo" : "Revisión asistida v005"}</button>
                 <button className="secondary" onClick={() => setShowEvent(true)}>+ Nueva etiqueta</button>
+                <button className="delete-match-button" disabled={deletingMatch || analysisJob?.status === "queued" || analysisJob?.status === "running" || datasetJob?.status === "queued" || datasetJob?.status === "running"} onClick={() => void deleteSelectedMatch()}>{deletingMatch ? "Eliminando…" : "Eliminar partido"}</button>
               </div>
             </section>
             <section className="video-panel">
@@ -316,8 +402,8 @@ function App() {
             {analysisJob && <section className={`analysis-card ${analysisJob.status}`}>
               <div className="analysis-copy">
                 <span className="analysis-icon">◎</span>
-                <div><strong>{analysisJob.status === "completed" ? "Análisis visual listo" : analysisJob.status === "failed" ? "No se pudo analizar" : "Analizando el partido"}</strong>
-                <small>{analysisJob.status === "completed" ? `${signals.length} muestras · objetos mostrados como candidatos experimentales` : analysisJob.stage === "sampling" ? "Revisando campo, luz, jugadores y balón…" : analysisJob.stage === "refining" ? "Afinando el segundo exacto de cada candidato…" : "Preparando el video…"}</small></div>
+                <div><strong>{analysisJob.status === "completed" ? analysisMode === "research" ? "Revisión asistida v005 lista" : "Análisis visual listo" : analysisJob.status === "failed" ? "No se pudo analizar" : analysisMode === "research" ? "Analizando con el master de investigación" : "Analizando el partido"}</strong>
+                <small>{analysisJob.status === "completed" ? `${signals.length} muestras · candidatos automáticos listos para revisar` : analysisJob.stage === "sampling" ? "Revisando campo, luz, jugadores y balón…" : analysisJob.stage === "scoring" ? analysisMode === "research" ? "Buscando corners con v005 (research_only)…" : "Buscando corners con el modelo neuronal local…" : analysisJob.stage === "refining" ? "Afinando el segundo exacto de cada candidato…" : "Preparando el video…"}</small></div>
               </div>
               {analysisJob.status === "completed" ? <div className="analysis-metrics">
                 <span><b>{fieldSamples}</b>campo visible</span><span><b>{strongChanges}</b>cambios fuertes</span>
@@ -335,10 +421,11 @@ function App() {
               ))}
             </section>
             <section className="events-panel">
-              <div className="section-title"><h2>Momentos del partido</h2><div><span>{visibleEvents.length} etiquetas</span><button onClick={() => setShowRejected((value) => !value)}>{showRejected ? "Ocultar descartados" : `Ver descartados (${events.filter((event) => event.review_status === "rejected").length})`}</button></div></div>
-              {visibleEvents.length === 0 ? (
-                <div className="no-events"><p>No hay etiquetas con estos filtros.</p><button onClick={() => setShowEvent(true)}>Agregar una manualmente</button></div>
-              ) : visibleEvents.map((event) => (
+              <div className="section-title"><h2>{reviewMode ? "Bloque de validación" : "Momentos del partido"}</h2><div><span>{reviewMode ? `${Math.min(5, pendingReviewEvents.length)} de ${pendingReviewEvents.length} pendientes` : `${visibleEvents.length} etiquetas`}</span>{pendingReviewEvents.length > 0 && <button className={reviewMode ? "review-toggle active" : "review-toggle"} onClick={() => setReviewMode((value) => !value)}>{reviewMode ? "Salir de revisión" : `Revisar bloque (${pendingReviewEvents.length})`}</button>}<button onClick={() => setShowRejected((value) => !value)}>{showRejected ? "Ocultar descartados" : `Ver descartados (${events.filter((event) => event.review_status === "rejected").length})`}</button></div></div>
+              {reviewMode && <div className="review-summary"><strong>Valida estos cinco momentos</strong><span>Al confirmar, corregir o descartar uno, aparecerá automáticamente el siguiente candidato.</span></div>}
+              {listedEvents.length === 0 ? (
+                <div className="no-events"><p>{reviewMode ? "Terminaste todos los candidatos visibles." : "No hay etiquetas con estos filtros."}</p>{reviewMode ? <button onClick={() => setReviewMode(false)}>Volver a todas las etiquetas</button> : <button onClick={() => setShowEvent(true)}>Agregar una manualmente</button>}</div>
+              ) : listedEvents.map((event) => (
                 <div className="event-row" key={event.id}>
                   <button className="event-seek" onClick={() => seek(event.peak_seconds)}>
                     <span className="event-time">{formatTime(event.peak_seconds)}</span>

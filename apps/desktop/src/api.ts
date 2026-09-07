@@ -17,6 +17,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   health: () => request<{ status: string }>("/health"),
   listMatches: () => request<Match[]>("/matches"),
+  listDeletedMatches: () => request<Match[]>("/matches/deleted"),
+  deleteMatch: async (matchId: string) => {
+    const response = await fetch(`${API_URL}/matches/${matchId}`, { method: "DELETE" });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ detail: "No se pudo eliminar el partido" }));
+      throw new Error(body.detail ?? "No se pudo eliminar el partido");
+    }
+  },
+  restoreMatch: (matchId: string) =>
+    request<Match>(`/matches/${matchId}/restore`, { method: "POST" }),
   importMatch: (title: string, videoPath: string) =>
     request<Match>("/matches/import", {
       method: "POST",
@@ -63,6 +73,8 @@ export const api = {
   getDatasetExport: (jobId: string) => request<DatasetExportJob>(`/dataset/export/${jobId}`),
   startAnalysis: (matchId: string) =>
     request<AnalysisJob>(`/matches/${matchId}/analysis`, { method: "POST" }),
+  startResearchAssistedAnalysis: (matchId: string) =>
+    request<AnalysisJob>(`/matches/${matchId}/analysis/research-assisted`, { method: "POST" }),
   getAnalysis: (jobId: string) => request<AnalysisJob>(`/analysis/${jobId}`),
   latestAnalysis: (matchId: string) =>
     request<AnalysisJob>(`/matches/${matchId}/analysis/latest`),

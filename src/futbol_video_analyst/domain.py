@@ -12,10 +12,12 @@ class MatchStatus(StrEnum):
 
 class EventType(StrEnum):
     CORNER = "corner"
+    GOAL_KICK = "goal_kick"
     THROW_IN = "throw_in"
     PENALTY = "penalty"
     GOAL = "goal"
-    SHOT = "shot"
+    FREE_KICK = "free_kick"
+    SHOT_ATTEMPT = "shot_attempt"
     FOUL = "foul"
     CUSTOM = "custom"
 
@@ -41,6 +43,7 @@ class AnalysisStatus(StrEnum):
 class AnalysisStage(StrEnum):
     QUEUED = "queued"
     SAMPLING = "sampling"
+    SCORING = "scoring"
     REFINING = "refining"
     COMPLETED = "completed"
     FAILED = "failed"

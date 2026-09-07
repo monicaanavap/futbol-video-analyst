@@ -13,11 +13,15 @@ data/media/*
 data/clips/*
 data/datasets/*
 data/training_cache/*
+data/external/*
+data/evaluations/*
 data/*.sqlite3
 data/*.sqlite3-*
 !data/media/.gitkeep
 !data/clips/.gitkeep
 !data/datasets/.gitkeep
 !data/training_cache/.gitkeep
+!data/external/.gitkeep
+!data/evaluations/.gitkeep
 models/*
 !models/.gitkeep
