@@ -235,6 +235,8 @@ def test_exports_reviewed_events_as_a_grouped_training_dataset(tmp_path: Path) -
             f"/matches/{match_id}/events",
             json={
                 "type": "penalty",
+                "outcome": "goal",
+                "phase": "penalty_shootout",
                 "start_seconds": 30,
                 "peak_seconds": 35,
                 "end_seconds": 42,
@@ -287,6 +289,10 @@ def test_exports_reviewed_events_as_a_grouped_training_dataset(tmp_path: Path) -
     assert result["label_counts"] == {"corner": 1, "negative": 1, "penalty": 1}
     records = [json.loads(line) for line in Path(result["manifest_path"]).read_text().splitlines()]
     assert {record["label"] for record in records} == {"corner", "penalty", "negative"}
+    penalty = next(record for record in records if record["label"] == "penalty")
+    assert penalty["labels"] == ["penalty", "goal"]
+    assert penalty["outcome"] == "goal"
+    assert penalty["phase"] == "penalty_shootout"
     assert len({record["match_id"] for record in records}) == 1
     assert all((Path(result["path"]) / record["clip_path"]).is_file() for record in records)
 

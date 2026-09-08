@@ -81,6 +81,7 @@ class LocalDatasetExporter:
         destination.mkdir(parents=True, exist_ok=False)
         manifest_path = destination / "manifest.jsonl"
         label_counts: Counter[str] = Counter()
+        multi_label_counts: Counter[str] = Counter()
 
         try:
             with manifest_path.open("w", encoding="utf-8") as manifest:
@@ -99,15 +100,21 @@ class LocalDatasetExporter:
                         event.notes
                         and "soccernet-research-temporal-v005" in event.notes
                     )
+                    labels = [label]
+                    if label != "negative" and event.outcome == "goal" and "goal" not in labels:
+                        labels.append("goal")
                     record = {
                         "clip_path": relative_path.as_posix(),
                         "label": label,
+                        "labels": labels,
                         "match_id": match.id,
                         "match_title": match.title,
                         "event_id": event.id,
                         "source": event.source.value,
                         "review_status": event.review_status.value,
                         "detected_type": event.detected_type.value if event.detected_type else None,
+                        "outcome": event.outcome.value if event.outcome else None,
+                        "phase": event.phase.value if event.phase else None,
                         "start_seconds": event.start_seconds,
                         "peak_seconds": event.peak_seconds,
                         "end_seconds": event.end_seconds,
@@ -128,6 +135,7 @@ class LocalDatasetExporter:
                     }
                     manifest.write(json.dumps(record, ensure_ascii=False) + "\n")
                     label_counts[label] += 1
+                    multi_label_counts.update(labels)
                     if on_progress:
                         on_progress(sum(label_counts.values()), len(selected))
         except (OSError, ClipExportError) as error:
@@ -141,6 +149,7 @@ class LocalDatasetExporter:
             "matches": len({match.id for match, _, _ in selected}),
             "skipped_events": skipped_events,
             "label_counts": dict(sorted(label_counts.items())),
+            "multi_label_counts": dict(sorted(multi_label_counts.items())),
             "manifest": "manifest.jsonl",
         }
         (destination / "summary.json").write_text(

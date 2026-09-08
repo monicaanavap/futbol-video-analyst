@@ -78,6 +78,36 @@ def test_initialize_migrates_legacy_shots_to_shot_attempts(tmp_path: Path) -> No
     assert migrated.detected_type is EventType.SHOT_ATTEMPT
 
 
+def test_initialize_adds_event_context_and_migrates_simple_outcome_notes(tmp_path: Path) -> None:
+    path = tmp_path / "legacy-event-context.sqlite3"
+    database = Database(path)
+    database.initialize()
+    match = database.create_match(
+        "Tanda",
+        str(tmp_path / "match.mp4"),
+        VideoMetadata(duration_seconds=90, width=1280, height=720, fps=30, codec="h264"),
+    )
+    with database.connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO events (
+                id, match_id, type, start_seconds, peak_seconds, end_seconds,
+                confidence, source, review_status, notes
+            ) VALUES ('legacy-penalty', ?, 'penalty', 10, 15, 20, 1, 'manual',
+                'unreviewed', 'gol')
+            """,
+            (match.id,),
+        )
+        connection.execute("UPDATE events SET outcome = NULL, phase = NULL")
+
+    database.initialize()
+
+    migrated = database.get_event("legacy-penalty")
+    assert migrated is not None
+    assert migrated.outcome == "goal"
+    assert migrated.phase is None
+
+
 def test_soft_deletes_and_restores_match_with_its_data(tmp_path: Path) -> None:
     database = Database(tmp_path / "matches.sqlite3")
     database.initialize()

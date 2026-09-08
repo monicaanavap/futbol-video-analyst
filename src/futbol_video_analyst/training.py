@@ -31,6 +31,7 @@ def load_examples(dataset: Path, task: str = "corner") -> list[TrainingExample]:
     examples: list[TrainingExample] = []
     for line_number, line in enumerate(manifest_path.read_text(encoding="utf-8").splitlines(), 1):
         record = json.loads(line)
+        labels = record.get("labels", [record["label"]])
         clip_path = dataset / record["clip_path"]
         if not clip_path.is_file():
             raise ValueError(f"Falta el clip de la línea {line_number}: {clip_path}")
@@ -38,7 +39,7 @@ def load_examples(dataset: Path, task: str = "corner") -> list[TrainingExample]:
             TrainingExample(
                 clip_path=clip_path,
                 event_id=record["event_id"],
-                label=1 if record["label"] == task else 0,
+                label=1 if task in labels else 0,
                 match_id=record["match_id"],
                 match_title=record["match_title"],
                 peak_in_clip=float(record["peak_seconds"]) - float(record["start_seconds"]),

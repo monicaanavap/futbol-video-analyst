@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS events (
     source TEXT NOT NULL,
     review_status TEXT NOT NULL,
     detected_type TEXT,
+    outcome TEXT,
+    phase TEXT,
     notes TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -100,6 +102,21 @@ class Database:
             }
             if "detected_type" not in event_columns:
                 connection.execute("ALTER TABLE events ADD COLUMN detected_type TEXT")
+            if "outcome" not in event_columns:
+                connection.execute("ALTER TABLE events ADD COLUMN outcome TEXT")
+            if "phase" not in event_columns:
+                connection.execute("ALTER TABLE events ADD COLUMN phase TEXT")
+            connection.execute(
+                """
+                UPDATE events SET outcome = CASE lower(trim(notes))
+                    WHEN 'gol' THEN 'goal'
+                    WHEN 'atajado' THEN 'saved'
+                    WHEN 'fallado' THEN 'missed'
+                    WHEN 'bloqueado' THEN 'blocked'
+                    ELSE outcome END
+                WHERE outcome IS NULL AND notes IS NOT NULL
+                """
+            )
             # `shot` was the original catch-all category. Preserve every existing
             # label while changing its default meaning to the new shot-attempt class.
             connection.execute(
@@ -211,8 +228,8 @@ class Database:
                 """
                 INSERT INTO events (
                     id, match_id, type, start_seconds, peak_seconds, end_seconds,
-                    confidence, source, review_status, detected_type, notes
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    confidence, source, review_status, detected_type, outcome, phase, notes
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event_id,
@@ -225,6 +242,8 @@ class Database:
                     payload.source,
                     ReviewStatus.UNREVIEWED,
                     payload.type if payload.source is EventSource.DETECTOR else None,
+                    payload.outcome,
+                    payload.phase,
                     payload.notes,
                 ),
             )
@@ -260,13 +279,15 @@ class Database:
             connection.execute(
                 """
                 UPDATE events SET type = ?, start_seconds = ?, peak_seconds = ?,
-                    end_seconds = ?, notes = ? WHERE id = ?
+                    end_seconds = ?, outcome = ?, phase = ?, notes = ? WHERE id = ?
                 """,
                 (
                     payload.type,
                     payload.start_seconds,
                     payload.peak_seconds,
                     payload.end_seconds,
+                    payload.outcome,
+                    payload.phase,
                     payload.notes,
                     event_id,
                 ),
@@ -278,13 +299,16 @@ class Database:
             connection.execute(
                 """
                 UPDATE events SET type = ?, start_seconds = ?, peak_seconds = ?,
-                    end_seconds = ?, notes = ?, review_status = ? WHERE id = ?
+                    end_seconds = ?, outcome = ?, phase = ?, notes = ?, review_status = ?
+                    WHERE id = ?
                 """,
                 (
                     payload.type,
                     payload.start_seconds,
                     payload.peak_seconds,
                     payload.end_seconds,
+                    payload.outcome,
+                    payload.phase,
                     payload.notes,
                     ReviewStatus.CONFIRMED,
                     event_id,

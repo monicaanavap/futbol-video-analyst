@@ -1,4 +1,6 @@
 export type EventType = "corner" | "goal_kick" | "throw_in" | "penalty" | "goal" | "free_kick" | "shot_attempt" | "foul" | "custom";
+export type EventOutcome = "goal" | "saved" | "missed" | "blocked" | "no_goal";
+export type MatchPhase = "regulation" | "extra_time" | "penalty_shootout";
 
 export interface Match {
   id: string;
@@ -18,6 +20,8 @@ export interface MatchEvent {
   match_id: string;
   detected_type: EventType | null;
   type: EventType;
+  outcome: EventOutcome | null;
+  phase: MatchPhase | null;
   start_seconds: number;
   peak_seconds: number;
   end_seconds: number;
@@ -30,6 +34,8 @@ export interface MatchEvent {
 
 export interface EventDraft {
   type: EventType;
+  outcome: EventOutcome | null;
+  phase: MatchPhase | null;
   start_seconds: number;
   peak_seconds: number;
   end_seconds: number;
@@ -40,6 +46,8 @@ export interface EventDraft {
 
 export interface EventUpdate {
   type: EventType;
+  outcome: EventOutcome | null;
+  phase: MatchPhase | null;
   start_seconds: number;
   peak_seconds: number;
   end_seconds: number;

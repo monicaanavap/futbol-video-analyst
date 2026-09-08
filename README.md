@@ -132,6 +132,13 @@ identificador de partido del manifiesto permitirá dividir entrenamiento y prueb
 mezclar clips del mismo video. La preparación corre en segundo plano y el botón muestra
 su porcentaje para que una exportación larga no bloquee ni desconecte la aplicación.
 
+Cada evento conserva un tipo principal y puede registrar además un `outcome`
+(`goal`, `saved`, `missed`, `blocked` o `no_goal`) y una fase (`regulation`,
+`extra_time` o `penalty_shootout`). El manifiesto mantiene `label` para compatibilidad
+y añade `labels`; por ejemplo, un penal convertido se exporta con
+`"labels": ["penalty", "goal"]`. Así un solo clip puede alimentar varias tareas sin
+duplicarse.
+
 ## Pruebas
 
 ```bash

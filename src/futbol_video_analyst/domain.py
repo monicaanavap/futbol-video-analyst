@@ -22,6 +22,20 @@ class EventType(StrEnum):
     CUSTOM = "custom"
 
 
+class EventOutcome(StrEnum):
+    GOAL = "goal"
+    SAVED = "saved"
+    MISSED = "missed"
+    BLOCKED = "blocked"
+    NO_GOAL = "no_goal"
+
+
+class MatchPhase(StrEnum):
+    REGULATION = "regulation"
+    EXTRA_TIME = "extra_time"
+    PENALTY_SHOOTOUT = "penalty_shootout"
+
+
 class EventSource(StrEnum):
     MANUAL = "manual"
     DETECTOR = "detector"
@@ -77,6 +91,8 @@ class Match(BaseModel):
 
 class EventCreate(BaseModel):
     type: EventType
+    outcome: EventOutcome | None = None
+    phase: MatchPhase | None = None
     start_seconds: float = Field(ge=0)
     peak_seconds: float = Field(ge=0)
     end_seconds: float = Field(ge=0)
@@ -93,6 +109,8 @@ class EventCreate(BaseModel):
 
 class EventUpdate(BaseModel):
     type: EventType
+    outcome: EventOutcome | None = None
+    phase: MatchPhase | None = None
     start_seconds: float = Field(ge=0)
     peak_seconds: float = Field(ge=0)
     end_seconds: float = Field(ge=0)

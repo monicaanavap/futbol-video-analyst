@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api";
-import type { AnalysisJob, DatasetExportJob, EventDraft, EventType, EventUpdate, Match, MatchEvent, VisualSignal } from "./types";
+import type { AnalysisJob, DatasetExportJob, EventDraft, EventOutcome, EventType, EventUpdate, Match, MatchEvent, MatchPhase, VisualSignal } from "./types";
 
 const eventLabels: Record<EventType, string> = {
   corner: "Corners",
@@ -25,6 +25,25 @@ const eventColors: Record<EventType, string> = {
   foul: "#d79bf3",
   custom: "#a7b3ab",
 };
+
+const outcomeLabels: Record<EventOutcome, string> = {
+  goal: "Gol",
+  saved: "Atajado",
+  missed: "Fallado/desviado",
+  blocked: "Bloqueado",
+  no_goal: "Sin gol",
+};
+
+const phaseLabels: Record<MatchPhase, string> = {
+  regulation: "Tiempo regular",
+  extra_time: "Prórroga",
+  penalty_shootout: "Tanda de penales",
+};
+
+function eventDetails(event: MatchEvent) {
+  const details = [event.outcome ? outcomeLabels[event.outcome] : null, event.phase ? phaseLabels[event.phase] : null].filter(Boolean);
+  return details.length ? details.join(" · ") : event.notes || "Etiqueta manual";
+}
 
 function formatTime(seconds: number) {
   const safe = Math.max(0, Math.floor(seconds));
@@ -430,7 +449,7 @@ function App() {
                   <button className="event-seek" onClick={() => seek(event.peak_seconds)}>
                     <span className="event-time">{formatTime(event.peak_seconds)}</span>
                     <i style={{ background: eventColors[event.type] }} />
-                    <span><strong>{eventLabels[event.type]}</strong><small>{event.notes || "Etiqueta manual"}</small></span>
+                    <span><strong>{eventLabels[event.type]}</strong><small>{eventDetails(event)}</small></span>
                     <span className={`event-source ${event.review_status}`}>{event.source === "manual" ? "Manual" : event.review_status === "confirmed" ? "Confirmado" : event.review_status === "rejected" ? "Descartado" : `Candidato ${Math.round(event.confidence * 100)}%`}</span>
                     <span className="play-button">▶</span>
                   </button>
@@ -458,7 +477,7 @@ function App() {
 }
 
 function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { match: Match; event: MatchEvent; onClose: () => void; onUpdated: (event: MatchEvent, message?: string) => void; onDeleted: (eventId: string) => void }) {
-  const [draft, setDraft] = useState<EventUpdate>({ type: event.type, start_seconds: event.start_seconds, peak_seconds: event.peak_seconds, end_seconds: event.end_seconds, notes: event.notes ?? "" });
+  const [draft, setDraft] = useState<EventUpdate>({ type: event.type, outcome: event.outcome, phase: event.phase, start_seconds: event.start_seconds, peak_seconds: event.peak_seconds, end_seconds: event.end_seconds, notes: event.notes ?? "" });
   const [startText, setStartText] = useState(formatTimeInput(event.start_seconds));
   const [peakText, setPeakText] = useState(formatTimeInput(event.peak_seconds));
   const [endText, setEndText] = useState(formatTimeInput(event.end_seconds));
@@ -517,6 +536,8 @@ function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { matc
   return <div className="modal-backdrop"><form className="modal compact" noValidate onSubmit={submit}>
     <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">{event.review_status === "rejected" ? "RECLASIFICAR DESCARTADO" : "EDITAR ETIQUETA"}</p><h2>{event.review_status === "rejected" ? "¿Qué evento fue realmente?" : "Corregir momento"}</h2>
     <label>Tipo<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as EventType })}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Resultado<select value={draft.outcome ?? ""} onChange={(e) => setDraft({ ...draft, outcome: (e.target.value || null) as EventOutcome | null })}><option value="">Sin especificar</option>{Object.entries(outcomeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Fase del partido<select value={draft.phase ?? ""} onChange={(e) => setDraft({ ...draft, phase: (e.target.value || null) as MatchPhase | null })}><option value="">Sin especificar</option>{Object.entries(phaseLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Momento clave (minuto:segundo)<input inputMode="decimal" value={peakText} onChange={(e) => setPeakText(e.target.value)} onBlur={applyPeak} placeholder="63:19" /><small>Ejemplo: 7:15 o 63:19.5</small></label>
     <details className="advanced-options"><summary>Ajustar duración del clip</summary><div className="time-grid">
       <label>Inicio (min:seg)<input inputMode="decimal" value={startText} onChange={(e) => setStartText(e.target.value)} placeholder="63:11" /></label>
@@ -560,7 +581,7 @@ function ImportDialog({ onClose, onImported }: { onClose: () => void; onImported
 
 function EventDialog({ match, currentTime, onClose, onCreated }: { match: Match; currentTime: number; onClose: () => void; onCreated: (event: MatchEvent) => void }) {
   const peak = Math.round(currentTime);
-  const [draft, setDraft] = useState<EventDraft>({ type: "corner", start_seconds: Math.max(0, peak - 5), peak_seconds: peak, end_seconds: Math.min(match.duration_seconds, peak + 10), confidence: 1, source: "manual", notes: "" });
+  const [draft, setDraft] = useState<EventDraft>({ type: "corner", outcome: null, phase: null, start_seconds: Math.max(0, peak - 5), peak_seconds: peak, end_seconds: Math.min(match.duration_seconds, peak + 10), confidence: 1, source: "manual", notes: "" });
   const [startText, setStartText] = useState(formatTimeInput(Math.max(0, peak - 5)));
   const [peakText, setPeakText] = useState(formatTimeInput(peak));
   const [endText, setEndText] = useState(formatTimeInput(Math.min(match.duration_seconds, peak + 10)));
@@ -583,6 +604,8 @@ function EventDialog({ match, currentTime, onClose, onCreated }: { match: Match;
   return <div className="modal-backdrop"><form className="modal compact" noValidate onSubmit={submit}>
     <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">ETIQUETA MANUAL</p><h2>Marcar momento</h2>
     <label>Tipo<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as EventType })}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Resultado<select value={draft.outcome ?? ""} onChange={(e) => setDraft({ ...draft, outcome: (e.target.value || null) as EventOutcome | null })}><option value="">Sin especificar</option>{Object.entries(outcomeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Fase del partido<select value={draft.phase ?? ""} onChange={(e) => setDraft({ ...draft, phase: (e.target.value || null) as MatchPhase | null })}><option value="">Sin especificar</option>{Object.entries(phaseLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
     <label>Momento clave (minuto:segundo)<input inputMode="decimal" value={peakText} onChange={(e) => setPeakText(e.target.value)} onBlur={applyPeak} placeholder="7:15" /><small>Usamos el momento actual del reproductor. Ejemplo: 7:15.</small></label>
     <details className="advanced-options"><summary>Ajustar duración del clip</summary><p>Solo cambia estos valores si quieres más o menos contexto.</p><div className="time-grid">
       <label>Inicio (min:seg)<input inputMode="decimal" value={startText} onChange={(e) => setStartText(e.target.value)} placeholder="7:10" /></label>
