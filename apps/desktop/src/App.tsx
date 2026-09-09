@@ -40,7 +40,7 @@ const phaseLabels: Record<MatchPhase, string> = {
   penalty_shootout: "Tanda de penales",
 };
 
-const resultEventTypes = new Set<EventType>(["corner", "free_kick", "penalty", "shot_attempt"]);
+const resultEventTypes = new Set<EventType>(["corner", "free_kick", "penalty"]);
 
 function changeEventType<T extends EventDraft | EventUpdate>(draft: T, type: EventType): T {
   return {
