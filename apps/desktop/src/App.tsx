@@ -40,6 +40,17 @@ const phaseLabels: Record<MatchPhase, string> = {
   penalty_shootout: "Tanda de penales",
 };
 
+const resultEventTypes = new Set<EventType>(["corner", "free_kick", "penalty", "shot_attempt"]);
+
+function changeEventType<T extends EventDraft | EventUpdate>(draft: T, type: EventType): T {
+  return {
+    ...draft,
+    type,
+    outcome: resultEventTypes.has(type) ? draft.outcome : null,
+    phase: resultEventTypes.has(type) ? draft.phase : null,
+  };
+}
+
 function eventDetails(event: MatchEvent) {
   const details = [event.outcome ? outcomeLabels[event.outcome] : null, event.phase ? phaseLabels[event.phase] : null].filter(Boolean);
   return details.length ? details.join(" · ") : event.notes || "Etiqueta manual";
@@ -535,9 +546,11 @@ function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { matc
   };
   return <div className="modal-backdrop"><form className="modal compact" noValidate onSubmit={submit}>
     <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">{event.review_status === "rejected" ? "RECLASIFICAR DESCARTADO" : "EDITAR ETIQUETA"}</p><h2>{event.review_status === "rejected" ? "¿Qué evento fue realmente?" : "Corregir momento"}</h2>
-    <label>Tipo<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as EventType })}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <label>Resultado<select value={draft.outcome ?? ""} onChange={(e) => setDraft({ ...draft, outcome: (e.target.value || null) as EventOutcome | null })}><option value="">Sin especificar</option>{Object.entries(outcomeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <label>Fase del partido<select value={draft.phase ?? ""} onChange={(e) => setDraft({ ...draft, phase: (e.target.value || null) as MatchPhase | null })}><option value="">Sin especificar</option>{Object.entries(phaseLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Tipo<select value={draft.type} onChange={(e) => setDraft(changeEventType(draft, e.target.value as EventType))}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    {resultEventTypes.has(draft.type) && <>
+      <label>Resultado<select value={draft.outcome ?? ""} onChange={(e) => setDraft({ ...draft, outcome: (e.target.value || null) as EventOutcome | null })}><option value="">Sin especificar</option>{Object.entries(outcomeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label>Fase del partido<select value={draft.phase ?? ""} onChange={(e) => setDraft({ ...draft, phase: (e.target.value || null) as MatchPhase | null })}><option value="">Sin especificar</option>{Object.entries(phaseLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    </>}
     <label>Momento clave (minuto:segundo)<input inputMode="decimal" value={peakText} onChange={(e) => setPeakText(e.target.value)} onBlur={applyPeak} placeholder="63:19" /><small>Ejemplo: 7:15 o 63:19.5</small></label>
     <details className="advanced-options"><summary>Ajustar duración del clip</summary><div className="time-grid">
       <label>Inicio (min:seg)<input inputMode="decimal" value={startText} onChange={(e) => setStartText(e.target.value)} placeholder="63:11" /></label>
@@ -603,9 +616,11 @@ function EventDialog({ match, currentTime, onClose, onCreated }: { match: Match;
   };
   return <div className="modal-backdrop"><form className="modal compact" noValidate onSubmit={submit}>
     <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">ETIQUETA MANUAL</p><h2>Marcar momento</h2>
-    <label>Tipo<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value as EventType })}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <label>Resultado<select value={draft.outcome ?? ""} onChange={(e) => setDraft({ ...draft, outcome: (e.target.value || null) as EventOutcome | null })}><option value="">Sin especificar</option>{Object.entries(outcomeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-    <label>Fase del partido<select value={draft.phase ?? ""} onChange={(e) => setDraft({ ...draft, phase: (e.target.value || null) as MatchPhase | null })}><option value="">Sin especificar</option>{Object.entries(phaseLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <label>Tipo<select value={draft.type} onChange={(e) => setDraft(changeEventType(draft, e.target.value as EventType))}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    {resultEventTypes.has(draft.type) && <>
+      <label>Resultado<select value={draft.outcome ?? ""} onChange={(e) => setDraft({ ...draft, outcome: (e.target.value || null) as EventOutcome | null })}><option value="">Sin especificar</option>{Object.entries(outcomeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <label>Fase del partido<select value={draft.phase ?? ""} onChange={(e) => setDraft({ ...draft, phase: (e.target.value || null) as MatchPhase | null })}><option value="">Sin especificar</option>{Object.entries(phaseLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    </>}
     <label>Momento clave (minuto:segundo)<input inputMode="decimal" value={peakText} onChange={(e) => setPeakText(e.target.value)} onBlur={applyPeak} placeholder="7:15" /><small>Usamos el momento actual del reproductor. Ejemplo: 7:15.</small></label>
     <details className="advanced-options"><summary>Ajustar duración del clip</summary><p>Solo cambia estos valores si quieres más o menos contexto.</p><div className="time-grid">
       <label>Inicio (min:seg)<input inputMode="decimal" value={startText} onChange={(e) => setStartText(e.target.value)} placeholder="7:10" /></label>
