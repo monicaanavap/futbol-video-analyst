@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     research_model_path: Path = Path("models/soccernet-research-temporal-v006.pt")
     research_model_device: str = "auto"
     research_model_threshold: float = 0.93
-    research_model_labels: str = "corner,penalty,shot_attempt"
+    research_model_labels: str = "corner,penalty,shot_attempt,goal"
     research_cache_dir: Path = Path("data/training_cache/local-research-v006")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

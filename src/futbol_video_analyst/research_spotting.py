@@ -4,6 +4,28 @@ from threading import Lock
 
 from futbol_video_analyst.domain import EventCreate, EventSource, EventType, Match
 from futbol_video_analyst.model_benchmark import ResearchCornerSpotter
+from futbol_video_analyst.spotting_evaluation import TimelineEvent
+
+
+def prefer_goals(
+    predictions: list[TimelineEvent], tolerance_seconds: float = 3.0
+) -> list[TimelineEvent]:
+    goal_times = [
+        prediction.timestamp_seconds
+        for prediction in predictions
+        if prediction.event_type == EventType.GOAL.value
+    ]
+    return [
+        prediction
+        for prediction in predictions
+        if not (
+            prediction.event_type == EventType.SHOT_ATTEMPT.value
+            and any(
+                abs(prediction.timestamp_seconds - goal_time) <= tolerance_seconds
+                for goal_time in goal_times
+            )
+        )
+    ]
 
 
 class ResearchAssistedCornerSpotter:
@@ -40,11 +62,13 @@ class ResearchAssistedCornerSpotter:
         self, match: Match, on_progress: Callable[[float, int], None]
     ) -> list[EventCreate]:
         on_progress(0.05, 0)
-        predictions = self._load().spot(
-            match,
-            encoder_batch_size=64,
-            batch_size=16,
-            enabled_labels={event_type.value for event_type in self.enabled_types},
+        predictions = prefer_goals(
+            self._load().spot(
+                match,
+                encoder_batch_size=64,
+                batch_size=16,
+                enabled_labels={event_type.value for event_type in self.enabled_types},
+            )
         )
         on_progress(1.0, len(predictions))
         return [

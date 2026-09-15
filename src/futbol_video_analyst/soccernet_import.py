@@ -99,7 +99,6 @@ def import_soccernet(
             normalized = _normalize_label(source_label)
             mapped_label = LABEL_MAP.get(normalized, f"soccernet_{normalized.replace(' ', '_')}")
             source_counts[source_label] += 1
-            mapped_counts[mapped_label] += 1
             records.append(
                 {
                     "clip_path": str(video) if video else None,
@@ -120,6 +119,23 @@ def import_soccernet(
                 }
             )
 
+    goals_by_match: dict[str, list[float]] = {}
+    for record in records:
+        if record["label"] == "goal":
+            goals_by_match.setdefault(record["match_id"], []).append(record["peak_seconds"])
+    exclusive_records: list[dict[str, Any]] = []
+    for record in records:
+        is_goal_shot = record["label"] == "shot_attempt" and any(
+            abs(record["peak_seconds"] - goal_time) <= 3.0
+            for goal_time in goals_by_match.get(record["match_id"], [])
+        )
+        if is_goal_shot:
+            skipped["shot_attempt_near_goal"] += 1
+        else:
+            exclusive_records.append(record)
+    records = exclusive_records
+    mapped_counts = Counter(record["label"] for record in records)
+
     output.mkdir(parents=True)
     manifest = output / "manifest.jsonl"
     manifest.write_text(
@@ -134,7 +150,10 @@ def import_soccernet(
                 "source_url": SOURCE_URL,
                 "usage_restriction": USAGE_RESTRICTION,
                 "commercial_model_eligible": False,
-                "changes": "Mapped SoccerNet annotations to the local research manifest; videos were not copied.",
+                "changes": (
+                    "Mapped SoccerNet annotations to the local research manifest; videos "
+                    "were not copied; shot attempts within 3 seconds of a goal were excluded."
+                ),
                 "matches": len(matches),
                 "splits": dict(sorted(Counter(selected_splits.values()).items()))
                 if selected_splits

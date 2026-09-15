@@ -9,7 +9,7 @@ const eventLabels: Record<EventType, string> = {
   penalty: "Penales",
   goal: "Goles",
   free_kick: "Tiros libres",
-  shot_attempt: "Tiros a portería (intentos de gol)",
+  shot_attempt: "Tiros a portería (sin gol)",
   foul: "Faltas",
   custom: "Otros",
 };
@@ -433,7 +433,7 @@ function App() {
               <div className="analysis-copy">
                 <span className="analysis-icon">◎</span>
                 <div><strong>{analysisJob.status === "completed" ? analysisMode === "research" ? "Revisión asistida multiclase lista" : "Análisis visual listo" : analysisJob.status === "failed" ? "No se pudo analizar" : analysisMode === "research" ? "Analizando con el master de investigación" : "Analizando el partido"}</strong>
-                <small>{analysisJob.status === "completed" ? `${signals.length} muestras · candidatos automáticos listos para revisar` : analysisJob.stage === "sampling" ? "Revisando campo, luz, jugadores y balón…" : analysisJob.stage === "scoring" ? analysisMode === "research" ? "Buscando corners, penales y tiros con v006 (research_only)…" : "Buscando corners con el modelo neuronal local…" : analysisJob.stage === "refining" ? "Afinando el segundo exacto de cada candidato…" : "Preparando el video…"}</small></div>
+                <small>{analysisJob.status === "completed" ? `${signals.length} muestras · candidatos automáticos listos para revisar` : analysisJob.stage === "sampling" ? "Revisando campo, luz, jugadores y balón…" : analysisJob.stage === "scoring" ? analysisMode === "research" ? "Buscando corners, penales, tiros y goles con v006 (research_only)…" : "Buscando corners con el modelo neuronal local…" : analysisJob.stage === "refining" ? "Afinando el segundo exacto de cada candidato…" : "Preparando el video…"}</small></div>
               </div>
               {analysisJob.status === "completed" ? <div className="analysis-metrics">
                 <span><b>{fieldSamples}</b>campo visible</span><span><b>{strongChanges}</b>cambios fuertes</span>

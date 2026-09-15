@@ -19,6 +19,7 @@ def prepare_match(root: Path) -> Path:
                     {"gameTime": "2 - 01:02", "position": "62000", "label": "Shots on target"},
                     {"gameTime": "2 - 02:00", "position": "120000", "label": "Kick-off"},
                     {"gameTime": "2 - 03:00", "position": "180000", "label": "Goal"},
+                    {"gameTime": "2 - 03:02", "position": "182000", "label": "Shots on target"},
                     {"gameTime": "2 - 04:00", "position": "240000", "label": "Throw-in"},
                     {"gameTime": "2 - 05:00", "position": "300000", "label": "Foul"},
                     {"gameTime": "2 - 06:00", "position": "360000", "label": "Penalty"},
@@ -51,6 +52,7 @@ def test_imports_soccernet_without_copying_videos(tmp_path: Path) -> None:
     assert records[0]["clip_path"].endswith("1_224p.mkv")
     assert summary["commercial_model_eligible"] is False
     assert summary["matches"] == 1
+    assert summary["skipped"]["shot_attempt_near_goal"] == 1
 
 
 def test_requires_half_video_by_default(tmp_path: Path) -> None:
