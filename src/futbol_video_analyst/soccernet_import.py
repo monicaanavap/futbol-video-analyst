@@ -20,10 +20,13 @@ LABEL_MAP = {
     "shots on target": "shot_attempt",
     "shot off target": "shot_attempt",
     "shots off target": "shot_attempt",
-    "goal": "shot_attempt",
+    "goal": "goal",
     "direct free kick": "free_kick",
     "indirect free kick": "free_kick",
     "free kick": "free_kick",
+    "throw in": "throw_in",
+    "foul": "foul",
+    "penalty": "penalty",
 }
 
 

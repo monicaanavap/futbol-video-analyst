@@ -39,6 +39,13 @@ def _label_for(event: Event) -> str | None:
     return None
 
 
+def _research_teacher(notes: str | None) -> str | None:
+    if not notes:
+        return None
+    match = re.search(r"soccernet-research-temporal-v\d+", notes)
+    return match.group(0) if match else None
+
+
 class LocalDatasetExporter:
     def __init__(self, clip_exporter: FFmpegClipExporter) -> None:
         self.clip_exporter = clip_exporter
@@ -96,10 +103,8 @@ class LocalDatasetExporter:
                         event.start_seconds,
                         event.end_seconds,
                     )
-                    research_assisted = bool(
-                        event.notes
-                        and "soccernet-research-temporal-v005" in event.notes
-                    )
+                    teacher_model = _research_teacher(event.notes)
+                    research_assisted = teacher_model is not None
                     labels = [label]
                     if label != "negative" and event.outcome == "goal" and "goal" not in labels:
                         labels.append("goal")
@@ -122,11 +127,7 @@ class LocalDatasetExporter:
                         "annotation_tier": (
                             "research_assisted" if research_assisted else "human_reviewed"
                         ),
-                        "teacher_model": (
-                            "soccernet-research-temporal-v005"
-                            if research_assisted
-                            else None
-                        ),
+                        "teacher_model": teacher_model,
                         "commercial_eligibility": (
                             "requires_license_and_independent_review"
                             if research_assisted

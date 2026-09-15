@@ -72,6 +72,11 @@ def create_app(
             settings.research_cache_dir,
             settings.research_model_device,
             settings.research_model_threshold,
+            tuple(
+                EventType(label.strip())
+                for label in settings.research_model_labels.split(",")
+                if label.strip()
+            ),
         )
     research_coordinator = (
         AnalysisCoordinator(database, visual_analyzer, local_research_spotter, None)

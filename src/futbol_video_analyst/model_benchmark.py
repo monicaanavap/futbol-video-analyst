@@ -111,7 +111,13 @@ class ResearchCornerSpotter:
         self.model.load_state_dict(checkpoint["temporal_head_state_dict"])
         self.model.eval()
 
-    def spot(self, match: Match, encoder_batch_size: int, batch_size: int) -> list[TimelineEvent]:
+    def spot(
+        self,
+        match: Match,
+        encoder_batch_size: int,
+        batch_size: int,
+        enabled_labels: set[str] | None = None,
+    ) -> list[TimelineEvent]:
         cache_path = self.cache_dir / f"{match.id}.npz"
         embeddings, timestamps = extract_video_embeddings(
             Path(match.video_path),
@@ -143,7 +149,7 @@ class ResearchCornerSpotter:
             for spot in extract_spots(
                 probabilities, timestamps, self.config, self.thresholds
             )
-            if spot.event_type == EventType.CORNER
+            if spot.event_type in (enabled_labels or {EventType.CORNER.value})
         ]
 
 

@@ -18,6 +18,10 @@ def prepare_match(root: Path) -> Path:
                     {"gameTime": "1 - 10:30", "position": "630000", "label": "Corner"},
                     {"gameTime": "2 - 01:02", "position": "62000", "label": "Shots on target"},
                     {"gameTime": "2 - 02:00", "position": "120000", "label": "Kick-off"},
+                    {"gameTime": "2 - 03:00", "position": "180000", "label": "Goal"},
+                    {"gameTime": "2 - 04:00", "position": "240000", "label": "Throw-in"},
+                    {"gameTime": "2 - 05:00", "position": "300000", "label": "Foul"},
+                    {"gameTime": "2 - 06:00", "position": "360000", "label": "Penalty"},
                 ]
             }
         ),
@@ -38,6 +42,10 @@ def test_imports_soccernet_without_copying_videos(tmp_path: Path) -> None:
         "corner",
         "shot_attempt",
         "soccernet_kick_off",
+        "goal",
+        "throw_in",
+        "foul",
+        "penalty",
     ]
     assert records[1]["peak_seconds"] == 62
     assert records[0]["clip_path"].endswith("1_224p.mkv")

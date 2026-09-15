@@ -15,11 +15,13 @@ class ResearchAssistedCornerSpotter:
         cache_dir: Path,
         requested_device: str = "auto",
         corner_threshold: float = 0.93,
+        enabled_types: tuple[EventType, ...] = (EventType.CORNER,),
     ) -> None:
         self.model_path = model_path
         self.cache_dir = cache_dir
         self.requested_device = requested_device
         self.corner_threshold = corner_threshold
+        self.enabled_types = enabled_types
         self._spotter: ResearchCornerSpotter | None = None
         self._lock = Lock()
 
@@ -38,18 +40,23 @@ class ResearchAssistedCornerSpotter:
         self, match: Match, on_progress: Callable[[float, int], None]
     ) -> list[EventCreate]:
         on_progress(0.05, 0)
-        predictions = self._load().spot(match, encoder_batch_size=64, batch_size=16)
+        predictions = self._load().spot(
+            match,
+            encoder_batch_size=64,
+            batch_size=16,
+            enabled_labels={event_type.value for event_type in self.enabled_types},
+        )
         on_progress(1.0, len(predictions))
         return [
             EventCreate(
-                type=EventType.CORNER,
+                type=EventType(prediction.event_type),
                 start_seconds=max(0, prediction.timestamp_seconds - 12),
                 peak_seconds=prediction.timestamp_seconds,
                 end_seconds=min(match.duration_seconds, prediction.timestamp_seconds + 18),
                 confidence=prediction.confidence,
                 source=EventSource.DETECTOR,
                 notes=(
-                    "Revisión asistida por soccernet-research-temporal-v005; "
+                    f"Revisión asistida por {self.model_path.stem}; "
                     "research_only; requiere validación humana"
                 ),
             )

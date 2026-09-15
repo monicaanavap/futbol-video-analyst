@@ -325,41 +325,41 @@ class Database:
         self, match_id: str, candidates: list[EventCreate]
     ) -> list[Event]:
         with self.connect() as connection:
-            protected_peaks = [
-                row["peak_seconds"]
-                for row in connection.execute(
+            protected_rows = connection.execute(
                     """
-                    SELECT peak_seconds FROM events
+                    SELECT type, detected_type, peak_seconds FROM events
                     WHERE match_id = ? AND (
-                      (type = ? AND source = ? AND review_status != ?)
-                      OR (detected_type = ? AND review_status != ?)
+                      (source = ? AND review_status != ?)
+                      OR (source = ? AND review_status != ?)
                     )
                     """,
                     (
                         match_id,
-                        EventType.CORNER,
                         EventSource.MANUAL,
                         ReviewStatus.REJECTED,
-                        EventType.CORNER,
+                        EventSource.DETECTOR,
                         ReviewStatus.UNREVIEWED,
                     ),
                 ).fetchall()
-            ]
+            protected = {
+                (event_type, row["peak_seconds"])
+                for row in protected_rows
+                for event_type in (row["type"], row["detected_type"])
+                if event_type is not None
+            }
             connection.execute(
                 """
-                DELETE FROM events WHERE match_id = ? AND type = ? AND source = ?
-                AND review_status = ?
+                DELETE FROM events WHERE match_id = ? AND source = ? AND review_status = ?
                 """,
-                (
-                    match_id,
-                    EventType.CORNER,
-                    EventSource.DETECTOR,
-                    ReviewStatus.UNREVIEWED,
-                ),
+                (match_id, EventSource.DETECTOR, ReviewStatus.UNREVIEWED),
             )
             inserted_ids: list[str] = []
             for candidate in candidates:
-                if any(abs(candidate.peak_seconds - peak) < 12 for peak in protected_peaks):
+                if any(
+                    candidate.type.value == event_type
+                    and abs(candidate.peak_seconds - peak) < 12
+                    for event_type, peak in protected
+                ):
                     continue
                 event_id = str(uuid4())
                 inserted_ids.append(event_id)

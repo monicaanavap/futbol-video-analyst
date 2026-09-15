@@ -149,7 +149,7 @@ function App() {
           setSignals(await api.listSignals(selected.id));
           setEvents(await api.listEvents(selected.id));
           setReviewMode(analysisMode === "research");
-          setNotice(analysisMode === "research" ? "Revisión asistida v005 lista; valida los candidatos por bloques" : "Análisis completado; revisa los corners candidatos");
+          setNotice(analysisMode === "research" ? "Revisión asistida multiclase lista; valida los candidatos por bloques" : "Análisis completado; revisa los corners candidatos");
         }
         if (job.status === "failed") setError(job.error ?? "El análisis no pudo completarse");
       });
@@ -409,7 +409,7 @@ function App() {
               <div className="heading-actions">
                 <button className="dataset-button" disabled={datasetJob?.status === "queued" || datasetJob?.status === "running"} onClick={() => void exportDataset()}>{datasetJob?.status === "queued" || datasetJob?.status === "running" ? `Preparando… ${Math.round(datasetJob.progress * 100)}%` : "Preparar dataset"}</button>
                 <button className="analysis-button" disabled={analysisJob?.status === "queued" || analysisJob?.status === "running"} onClick={() => void startAnalysis("commercial")}>{analysisJob?.status === "completed" && analysisMode === "commercial" ? "Analizar de nuevo" : "Análisis comercial"}</button>
-                <button className="research-analysis-button" disabled={analysisJob?.status === "queued" || analysisJob?.status === "running"} title="Modelo de investigación; sus candidatos requieren validación humana" onClick={() => void startAnalysis("research")}>{analysisJob?.status === "completed" && analysisMode === "research" ? "Revisión asistida de nuevo" : "Revisión asistida v005"}</button>
+                <button className="research-analysis-button" disabled={analysisJob?.status === "queued" || analysisJob?.status === "running"} title="Modelo de investigación multiclase; sus candidatos requieren validación humana" onClick={() => void startAnalysis("research")}>{analysisJob?.status === "completed" && analysisMode === "research" ? "Revisión asistida de nuevo" : "Revisión asistida multiclase"}</button>
                 <button className="secondary" onClick={() => setShowEvent(true)}>+ Nueva etiqueta</button>
                 <button className="delete-match-button" disabled={deletingMatch || analysisJob?.status === "queued" || analysisJob?.status === "running" || datasetJob?.status === "queued" || datasetJob?.status === "running"} onClick={() => void deleteSelectedMatch()}>{deletingMatch ? "Eliminando…" : "Eliminar partido"}</button>
               </div>
@@ -432,8 +432,8 @@ function App() {
             {analysisJob && <section className={`analysis-card ${analysisJob.status}`}>
               <div className="analysis-copy">
                 <span className="analysis-icon">◎</span>
-                <div><strong>{analysisJob.status === "completed" ? analysisMode === "research" ? "Revisión asistida v005 lista" : "Análisis visual listo" : analysisJob.status === "failed" ? "No se pudo analizar" : analysisMode === "research" ? "Analizando con el master de investigación" : "Analizando el partido"}</strong>
-                <small>{analysisJob.status === "completed" ? `${signals.length} muestras · candidatos automáticos listos para revisar` : analysisJob.stage === "sampling" ? "Revisando campo, luz, jugadores y balón…" : analysisJob.stage === "scoring" ? analysisMode === "research" ? "Buscando corners con v005 (research_only)…" : "Buscando corners con el modelo neuronal local…" : analysisJob.stage === "refining" ? "Afinando el segundo exacto de cada candidato…" : "Preparando el video…"}</small></div>
+                <div><strong>{analysisJob.status === "completed" ? analysisMode === "research" ? "Revisión asistida multiclase lista" : "Análisis visual listo" : analysisJob.status === "failed" ? "No se pudo analizar" : analysisMode === "research" ? "Analizando con el master de investigación" : "Analizando el partido"}</strong>
+                <small>{analysisJob.status === "completed" ? `${signals.length} muestras · candidatos automáticos listos para revisar` : analysisJob.stage === "sampling" ? "Revisando campo, luz, jugadores y balón…" : analysisJob.stage === "scoring" ? analysisMode === "research" ? "Buscando corners, penales y tiros con v006 (research_only)…" : "Buscando corners con el modelo neuronal local…" : analysisJob.stage === "refining" ? "Afinando el segundo exacto de cada candidato…" : "Preparando el video…"}</small></div>
               </div>
               {analysisJob.status === "completed" ? <div className="analysis-metrics">
                 <span><b>{fieldSamples}</b>campo visible</span><span><b>{strongChanges}</b>cambios fuertes</span>

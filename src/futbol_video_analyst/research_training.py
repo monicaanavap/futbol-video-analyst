@@ -18,6 +18,16 @@ from futbol_video_analyst.action_spotting import (
 from futbol_video_analyst.spotting_evaluation import TimelineEvent, evaluate
 from futbol_video_analyst.training import _device
 
+PRODUCT_RESEARCH_LABELS = (
+    "corner",
+    "free_kick",
+    "shot_attempt",
+    "goal",
+    "throw_in",
+    "foul",
+    "penalty",
+)
+
 
 def _ml() -> tuple[Any, Any]:
     try:
@@ -395,8 +405,20 @@ def run_training(
     batch_size: int,
     encoder_batch_size: int,
     architecture: str = "bigru",
+    labels: tuple[str, ...] = ("corner", "shot_attempt"),
+    window_frames: int = 128,
+    stride_frames: int = 64,
+    hidden_size: int = 128,
 ) -> Path:
-    config = ActionSpottingConfig(labels=("corner", "shot_attempt"))
+    if not labels:
+        raise ValueError("At least one research label is required")
+    if len(set(labels)) != len(labels):
+        raise ValueError("Research labels must be unique")
+    config = ActionSpottingConfig(
+        labels=labels,
+        window_frames=window_frames,
+        stride_frames=stride_frames,
+    )
     timelines = load_manifest(dataset / "manifest.jsonl", config.labels)
     torch, timm = _ml()
     device = _device(torch, requested_device)
@@ -436,7 +458,7 @@ def run_training(
     validation_windows = _windows(validation, config)
     feature_size = training[0]["embeddings"].shape[1]
     model = build_temporal_head(
-        feature_size, 128, len(config.labels), architecture=architecture
+        feature_size, hidden_size, len(config.labels), architecture=architecture
     ).to(device)
 
     target_values = np.concatenate([timeline["targets"] for timeline in training], axis=0)
@@ -530,7 +552,7 @@ def run_training(
         "temporal_architecture": architecture,
         "config": config.to_dict(),
         "feature_size": feature_size,
-        "hidden_size": 128,
+        "hidden_size": hidden_size,
         "learning_rate": learning_rate,
         "temporal_head_state_dict": best_state,
         "thresholds": thresholds,
@@ -582,6 +604,15 @@ def main() -> None:
     parser.add_argument(
         "--architecture", choices=["bigru", "tcn"], default="bigru"
     )
+    parser.add_argument(
+        "--labels",
+        nargs="+",
+        default=list(PRODUCT_RESEARCH_LABELS),
+        help="Event labels to train in one shared temporal model",
+    )
+    parser.add_argument("--window-frames", type=int, default=128)
+    parser.add_argument("--stride-frames", type=int, default=64)
+    parser.add_argument("--hidden-size", type=int, default=128)
     arguments = parser.parse_args()
     run_training(
         arguments.dataset.resolve(),
@@ -592,6 +623,10 @@ def main() -> None:
         arguments.batch_size,
         arguments.encoder_batch_size,
         arguments.architecture,
+        tuple(arguments.labels),
+        arguments.window_frames,
+        arguments.stride_frames,
+        arguments.hidden_size,
     )
 
 

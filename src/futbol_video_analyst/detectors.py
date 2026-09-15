@@ -75,6 +75,9 @@ class CornerTimestampRefiner:
         refined: list[EventCreate] = []
         try:
             for candidate in candidates:
+                if candidate.type is not EventType.CORNER:
+                    refined.append(candidate)
+                    continue
                 observations = self._motion_observations(capture, match, candidate.peak_seconds)
                 motion_timestamp = select_motion_timestamp(candidate.peak_seconds, observations)
                 timestamp = motion_timestamp
@@ -88,9 +91,17 @@ class CornerTimestampRefiner:
                             "start_seconds": max(0, timestamp - 8),
                             "peak_seconds": timestamp,
                             "end_seconds": min(match.duration_seconds, timestamp + 12),
-                            "notes": (
-                                "Candidato automático con momento afinado: balón, jugadores, "
-                                "líneas y cambio de movimiento"
+                            "notes": "; ".join(
+                                filter(
+                                    None,
+                                    (
+                                        candidate.notes,
+                                    (
+                                        "Momento afinado: balón, jugadores, líneas y "
+                                        "cambio de movimiento"
+                                    ),
+                                    ),
+                                )
                             ),
                         }
                     )
