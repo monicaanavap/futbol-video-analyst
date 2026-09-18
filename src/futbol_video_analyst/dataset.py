@@ -108,6 +108,10 @@ class LocalDatasetExporter:
                     labels = [label]
                     if label != "negative" and event.outcome == "goal" and "goal" not in labels:
                         labels.append("goal")
+                    detected_type = event.detected_type.value if event.detected_type else None
+                    hard_negative_for = []
+                    if detected_type and (label == "negative" or detected_type not in labels):
+                        hard_negative_for.append(detected_type)
                     record = {
                         "clip_path": relative_path.as_posix(),
                         "label": label,
@@ -117,7 +121,8 @@ class LocalDatasetExporter:
                         "event_id": event.id,
                         "source": event.source.value,
                         "review_status": event.review_status.value,
-                        "detected_type": event.detected_type.value if event.detected_type else None,
+                        "detected_type": detected_type,
+                        "hard_negative_for": hard_negative_for,
                         "outcome": event.outcome.value if event.outcome else None,
                         "phase": event.phase.value if event.phase else None,
                         "start_seconds": event.start_seconds,

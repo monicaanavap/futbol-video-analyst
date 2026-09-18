@@ -1,4 +1,4 @@
-export type EventType = "corner" | "goal_kick" | "throw_in" | "penalty" | "goal" | "free_kick" | "shot_attempt" | "foul" | "custom";
+export type EventType = "corner" | "goal_kick" | "throw_in" | "penalty" | "goal" | "disallowed_goal" | "free_kick" | "shot_attempt" | "foul" | "custom";
 export type EventOutcome = "goal" | "saved" | "missed" | "blocked" | "no_goal";
 export type MatchPhase = "regulation" | "extra_time" | "penalty_shootout";
 

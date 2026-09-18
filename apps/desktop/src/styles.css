@@ -81,6 +81,8 @@ video { width: 100%; max-height: 56vh; display: block; border-radius: 10px; back
 .filter.active { color: #e5eee8; border-color: #415248; background: #1a2520; }
 .filter i, .event-row i { width: 7px; height: 7px; border-radius: 50%; }
 .filter b { min-width: 17px; padding: 1px 5px; border-radius: 10px; color: #98a79f; font-size: 10px; background: #26332d; }
+.notes-filter { margin-left: 4px; }
+.notes-filter > span { font-size: 13px; }
 .events-panel { border: 1px solid #28362f; border-radius: 13px; overflow: hidden; background: #121a17; }
 .section-title { display: flex; align-items: center; justify-content: space-between; padding: 19px 21px; border-bottom: 1px solid #26332d; }
 .section-title span { color: #77867e; font-size: 12px; }
@@ -96,6 +98,8 @@ video { width: 100%; max-height: 56vh; display: block; border-radius: 10px; back
 .event-seek { min-width: 0; display: grid; grid-template-columns: 58px 8px 1fr auto 32px; align-items: center; gap: 13px; padding: 14px 12px 14px 20px; border: 0; color: inherit; text-align: left; background: transparent; }
 .event-time { color: #aebbb4; font-variant-numeric: tabular-nums; font-weight: 700; }
 .event-seek > span:nth-child(3) { display: flex; flex-direction: column; gap: 2px; }
+.event-seek > span:nth-child(3) strong { display: flex; align-items: center; gap: 8px; }
+.note-badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border: 1px solid #655d37; border-radius: 9px; color: #e8d68a; font-size: 9px; font-weight: 700; background: #2b2818; }
 .event-row small { color: #697971; }
 .event-source { color: #798981; font-size: 11px; }
 .play-button { color: #66d49a; }
@@ -129,6 +133,7 @@ input:focus, select:focus { border-color: #66d49a; box-shadow: 0 0 0 3px rgba(10
 .advanced-options summary { cursor: pointer; color: #9ed8b8; font-size: 12px; font-weight: 700; }
 .advanced-options p { margin: 10px 0 0; color: #708078; font-size: 11px; }
 label small { color: #708078; font-weight: 400; line-height: 1.4; }
+.classification-hint { margin: 9px 0 0; padding: 9px 11px; border-left: 3px solid #d1ae5c; border-radius: 5px; color: #d9c98e; font-size: 11px; line-height: 1.45; background: #262416; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 25px; }
 .modal-actions.split span { flex: 1; }
 .danger-button { border: 1px solid #71413e; border-radius: 8px; padding: 9px 13px; color: #efaaa4; background: #351d1c; }

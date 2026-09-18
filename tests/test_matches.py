@@ -100,6 +100,24 @@ def test_imports_and_lists_a_match(tmp_path: Path) -> None:
     assert response.json() == [created]
 
 
+def test_creates_a_disallowed_goal_label(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        match_id = import_match(client, tmp_path)["id"]
+        response = client.post(
+            f"/matches/{match_id}/events",
+            json={
+                "type": "disallowed_goal",
+                "start_seconds": 10,
+                "peak_seconds": 15,
+                "end_seconds": 22,
+                "notes": "Anulado por fuera de lugar",
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.json()["type"] == "disallowed_goal"
+
+
 def test_runs_research_assisted_analysis_separately(tmp_path: Path) -> None:
     with TestClient(
         create_app(

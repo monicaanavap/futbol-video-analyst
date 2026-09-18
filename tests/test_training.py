@@ -76,6 +76,24 @@ def test_loads_task_specific_positive_labels(tmp_path: Path) -> None:
     assert sum(example.label for example in examples) == 1
 
 
+def test_weights_reclassified_events_as_hard_negatives(tmp_path: Path) -> None:
+    write_manifest(tmp_path)
+    records = [json.loads(line) for line in (tmp_path / "manifest.jsonl").read_text().splitlines()]
+    records[0]["label"] = "free_kick"
+    records[0]["hard_negative_for"] = ["penalty"]
+    (tmp_path / "manifest.jsonl").write_text(
+        "\n".join(json.dumps(record) for record in records), encoding="utf-8"
+    )
+
+    penalty_examples = load_examples(tmp_path, task="penalty")
+    free_kick_examples = load_examples(tmp_path, task="free_kick")
+
+    assert penalty_examples[0].label == 0
+    assert penalty_examples[0].sample_weight == 3
+    assert free_kick_examples[0].label == 1
+    assert free_kick_examples[0].sample_weight == 1
+
+
 def test_balances_negatives_per_match(tmp_path: Path) -> None:
     write_manifest(tmp_path)
     examples = load_examples(tmp_path)

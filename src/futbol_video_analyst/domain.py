@@ -16,6 +16,7 @@ class EventType(StrEnum):
     THROW_IN = "throw_in"
     PENALTY = "penalty"
     GOAL = "goal"
+    DISALLOWED_GOAL = "disallowed_goal"
     FREE_KICK = "free_kick"
     SHOT_ATTEMPT = "shot_attempt"
     FOUL = "foul"

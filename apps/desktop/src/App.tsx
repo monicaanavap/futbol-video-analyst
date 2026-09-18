@@ -8,6 +8,7 @@ const eventLabels: Record<EventType, string> = {
   throw_in: "Saques de banda",
   penalty: "Penales",
   goal: "Goles",
+  disallowed_goal: "Goles anulados",
   free_kick: "Tiros libres",
   shot_attempt: "Tiros a portería (sin gol)",
   foul: "Faltas",
@@ -20,6 +21,7 @@ const eventColors: Record<EventType, string> = {
   throw_in: "#e6a76f",
   penalty: "#ef7d90",
   goal: "#6de0a5",
+  disallowed_goal: "#9ba6a0",
   free_kick: "#75b7f5",
   shot_attempt: "#ff6b6b",
   foul: "#d79bf3",
@@ -52,8 +54,27 @@ function changeEventType<T extends EventDraft | EventUpdate>(draft: T, type: Eve
 }
 
 function eventDetails(event: MatchEvent) {
-  const details = [event.outcome ? outcomeLabels[event.outcome] : null, event.phase ? phaseLabels[event.phase] : null].filter(Boolean);
-  return details.length ? details.join(" · ") : event.notes || "Etiqueta manual";
+  const details = [event.outcome ? outcomeLabels[event.outcome] : null, event.phase ? phaseLabels[event.phase] : null, event.notes?.trim() || null].filter(Boolean);
+  return details.length ? details.join(" · ") : "Etiqueta manual";
+}
+
+const automaticNotePrefixes = [
+  "Candidato automático",
+  "Revisión asistida por",
+  "Candidato temporal experimental",
+  "Momento afinado:",
+];
+
+function hasCoachNote(event: MatchEvent) {
+  const note = event.notes?.trim();
+  return Boolean(note && !automaticNotePrefixes.some((prefix) => note.startsWith(prefix)));
+}
+
+function classificationHint(type: EventType) {
+  if (type === "penalty") return "Penal: normalmente es cobrador contra portero, sin barrera.";
+  if (type === "free_kick") return "Tiro libre: normalmente hay barrera o varios defensores frente al balón.";
+  if (type === "disallowed_goal") return "Gol anulado: el balón entró, pero la anotación fue invalidada (por ejemplo, fuera de lugar).";
+  return null;
 }
 
 function formatTime(seconds: number) {
@@ -85,6 +106,7 @@ function App() {
   const [showImport, setShowImport] = useState(false);
   const [showEvent, setShowEvent] = useState(false);
   const [showRejected, setShowRejected] = useState(false);
+  const [notesOnly, setNotesOnly] = useState(false);
   const [reviewMode, setReviewMode] = useState(false);
   const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null);
   const [loading, setLoading] = useState(true);
@@ -180,8 +202,10 @@ function App() {
     [events, showRejected],
   );
   const visibleEvents = useMemo(
-    () => activeEvents.filter((event) => filters.has(event.type)),
-    [activeEvents, filters],
+    () => activeEvents.filter(
+      (event) => filters.has(event.type) && (!notesOnly || hasCoachNote(event)),
+    ),
+    [activeEvents, filters, notesOnly],
   );
   const pendingReviewEvents = useMemo(
     () => visibleEvents.filter(
@@ -449,6 +473,10 @@ function App() {
                   <b>{activeEvents.filter((event) => event.type === type).length}</b>
                 </button>
               ))}
+              <button className={notesOnly ? "filter notes-filter active" : "filter notes-filter"} onClick={() => setNotesOnly((value) => !value)} title="Mostrar únicamente momentos con notas">
+                <span aria-hidden="true">📝</span>Con notas
+                <b>{activeEvents.filter(hasCoachNote).length}</b>
+              </button>
             </section>
             <section className="events-panel">
               <div className="section-title"><h2>{reviewMode ? "Bloque de validación" : "Momentos del partido"}</h2><div><span>{reviewMode ? `${Math.min(5, pendingReviewEvents.length)} de ${pendingReviewEvents.length} pendientes` : `${visibleEvents.length} etiquetas`}</span>{pendingReviewEvents.length > 0 && <button className={reviewMode ? "review-toggle active" : "review-toggle"} onClick={() => setReviewMode((value) => !value)}>{reviewMode ? "Salir de revisión" : `Revisar bloque (${pendingReviewEvents.length})`}</button>}<button onClick={() => setShowRejected((value) => !value)}>{showRejected ? "Ocultar descartados" : `Ver descartados (${events.filter((event) => event.review_status === "rejected").length})`}</button></div></div>
@@ -460,7 +488,7 @@ function App() {
                   <button className="event-seek" onClick={() => seek(event.peak_seconds)}>
                     <span className="event-time">{formatTime(event.peak_seconds)}</span>
                     <i style={{ background: eventColors[event.type] }} />
-                    <span><strong>{eventLabels[event.type]}</strong><small>{eventDetails(event)}</small></span>
+                    <span><strong>{eventLabels[event.type]}{hasCoachNote(event) && <span className="note-badge" title="Esta muestra contiene notas del entrenador">📝 <span>Nota</span></span>}</strong><small>{eventDetails(event)}</small></span>
                     <span className={`event-source ${event.review_status}`}>{event.source === "manual" ? "Manual" : event.review_status === "confirmed" ? "Confirmado" : event.review_status === "rejected" ? "Descartado" : `Candidato ${Math.round(event.confidence * 100)}%`}</span>
                     <span className="play-button">▶</span>
                   </button>
@@ -547,6 +575,7 @@ function EditEventDialog({ match, event, onClose, onUpdated, onDeleted }: { matc
   return <div className="modal-backdrop"><form className="modal compact" noValidate onSubmit={submit}>
     <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">{event.review_status === "rejected" ? "RECLASIFICAR DESCARTADO" : "EDITAR ETIQUETA"}</p><h2>{event.review_status === "rejected" ? "¿Qué evento fue realmente?" : "Corregir momento"}</h2>
     <label>Tipo<select value={draft.type} onChange={(e) => setDraft(changeEventType(draft, e.target.value as EventType))}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    {classificationHint(draft.type) && <p className="classification-hint">{classificationHint(draft.type)}</p>}
     {resultEventTypes.has(draft.type) && <>
       <label>Resultado<select value={draft.outcome ?? ""} onChange={(e) => setDraft({ ...draft, outcome: (e.target.value || null) as EventOutcome | null })}><option value="">Sin especificar</option>{Object.entries(outcomeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>Fase del partido<select value={draft.phase ?? ""} onChange={(e) => setDraft({ ...draft, phase: (e.target.value || null) as MatchPhase | null })}><option value="">Sin especificar</option>{Object.entries(phaseLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
@@ -617,6 +646,7 @@ function EventDialog({ match, currentTime, onClose, onCreated }: { match: Match;
   return <div className="modal-backdrop"><form className="modal compact" noValidate onSubmit={submit}>
     <button type="button" className="close" onClick={onClose}>×</button><p className="eyebrow">ETIQUETA MANUAL</p><h2>Marcar momento</h2>
     <label>Tipo<select value={draft.type} onChange={(e) => setDraft(changeEventType(draft, e.target.value as EventType))}>{Object.entries(eventLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    {classificationHint(draft.type) && <p className="classification-hint">{classificationHint(draft.type)}</p>}
     {resultEventTypes.has(draft.type) && <>
       <label>Resultado<select value={draft.outcome ?? ""} onChange={(e) => setDraft({ ...draft, outcome: (e.target.value || null) as EventOutcome | null })}><option value="">Sin especificar</option>{Object.entries(outcomeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label>Fase del partido<select value={draft.phase ?? ""} onChange={(e) => setDraft({ ...draft, phase: (e.target.value || null) as MatchPhase | null })}><option value="">Sin especificar</option>{Object.entries(phaseLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>

@@ -28,6 +28,7 @@ def expand_context(examples: list[TrainingExample]) -> list[TrainingExample]:
             match_id=example.match_id,
             match_title=example.match_title,
             peak_in_clip=max(0, example.peak_in_clip + offset),
+            sample_weight=example.sample_weight,
         )
         for example in examples
         for offset in CONTEXT_SECONDS

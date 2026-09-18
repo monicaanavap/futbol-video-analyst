@@ -21,6 +21,7 @@ class TrainingExample:
     match_id: str
     match_title: str
     peak_in_clip: float
+    sample_weight: float = 1.0
 
 
 def load_examples(dataset: Path, task: str = "corner") -> list[TrainingExample]:
@@ -43,6 +44,7 @@ def load_examples(dataset: Path, task: str = "corner") -> list[TrainingExample]:
                 match_id=record["match_id"],
                 match_title=record["match_title"],
                 peak_in_clip=float(record["peak_seconds"]) - float(record["start_seconds"]),
+                sample_weight=3.0 if task in record.get("hard_negative_for", []) else 1.0,
             )
         )
     if not examples:
@@ -157,10 +159,14 @@ def balance_examples(
     for items in by_match.values():
         positives = [item for item in items if item.label == 1]
         negatives = [item for item in items if item.label == 0]
+        hard_negatives = [item for item in negatives if item.sample_weight > 1]
+        regular_negatives = [item for item in negatives if item.sample_weight <= 1]
         wanted = min(len(negatives), len(positives) * negative_ratio)
-        if wanted and wanted < len(negatives):
-            indices = np.linspace(0, len(negatives) - 1, wanted, dtype=int)
-            negatives = [negatives[index] for index in indices]
+        regular_wanted = max(0, wanted - len(hard_negatives))
+        if regular_wanted < len(regular_negatives):
+            indices = np.linspace(0, len(regular_negatives) - 1, regular_wanted, dtype=int)
+            regular_negatives = [regular_negatives[index] for index in indices]
+        negatives = hard_negatives + regular_negatives
         balanced.extend(positives + negatives)
     return balanced
 
@@ -320,6 +326,9 @@ def train_head(
     validation_indices = [index_by_id[example.event_id] for example in validation_examples]
     x_train = embeddings[train_indices]
     y_train = np.array([example.label for example in training_examples], dtype=np.float32)
+    sample_weights = np.array(
+        [example.sample_weight for example in training_examples], dtype=np.float32
+    )
     x_validation = embeddings[validation_indices]
     y_validation = np.array([example.label for example in validation_examples], dtype=np.float32)
 
@@ -334,11 +343,12 @@ def train_head(
     positives = float(y_train.sum())
     negatives = float(len(y_train) - positives)
     loss_function = torch.nn.BCEWithLogitsLoss(
-        pos_weight=torch.tensor([negatives / positives], device=device)
+        pos_weight=torch.tensor([negatives / positives], device=device), reduction="none"
     )
     optimizer = torch.optim.AdamW(head.parameters(), lr=0.01, weight_decay=0.05)
     train_x = torch.from_numpy(x_train).to(device)
     train_y = torch.from_numpy(y_train).to(device).unsqueeze(1)
+    train_weights = torch.from_numpy(sample_weights).to(device).unsqueeze(1)
     validation_x = torch.from_numpy(x_validation).to(device)
     validation_y = torch.from_numpy(y_validation).to(device).unsqueeze(1)
     best_loss = math.inf
@@ -349,12 +359,14 @@ def train_head(
     for _ in range(500):
         head.train()
         optimizer.zero_grad()
-        loss = loss_function(head(train_x), train_y)
+        loss = (loss_function(head(train_x), train_y) * train_weights).mean()
         loss.backward()
         optimizer.step()
         head.eval()
         with torch.inference_mode():
-            validation_loss = float(loss_function(head(validation_x), validation_y).item())
+            validation_loss = float(
+                loss_function(head(validation_x), validation_y).mean().item()
+            )
         if validation_loss < best_loss - 1e-5:
             best_loss = validation_loss
             best_state = {key: value.detach().cpu().clone() for key, value in head.state_dict().items()}
@@ -488,7 +500,21 @@ def run_training(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Entrena un clasificador local de corners")
     parser.add_argument("--dataset", type=Path, required=True)
-    parser.add_argument("--task", default="corner", choices=["corner", "free_kick", "shot_attempt"])
+    parser.add_argument(
+        "--task",
+        default="corner",
+        choices=[
+            "corner",
+            "free_kick",
+            "penalty",
+            "shot_attempt",
+            "goal",
+            "disallowed_goal",
+            "goal_kick",
+            "throw_in",
+            "foul",
+        ],
+    )
     parser.add_argument("--models-dir", type=Path, default=Path("models"))
     parser.add_argument("--validation-match")
     parser.add_argument("--device", default="auto", choices=["auto", "cpu", "mps", "cuda"])
