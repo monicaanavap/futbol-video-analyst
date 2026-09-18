@@ -96,18 +96,44 @@ function parseTimeInput(value: string) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+const reviewStorage = {
+  match: "futbol-analyst:selected-match",
+  mode: "futbol-analyst:review-mode",
+  filters: "futbol-analyst:event-filters",
+  rejected: "futbol-analyst:show-rejected",
+  notes: "futbol-analyst:notes-only",
+};
+
+function storedBoolean(key: string, fallback = false) {
+  const value = window.localStorage.getItem(key);
+  return value === null ? fallback : value === "true";
+}
+
+function storedFilters() {
+  try {
+    const values = JSON.parse(window.localStorage.getItem(reviewStorage.filters) ?? "null");
+    if (Array.isArray(values)) {
+      const valid = values.filter((value): value is EventType => value in eventLabels);
+      return new Set<EventType>(valid);
+    }
+  } catch {
+    // Ignore storage written by an older incompatible version.
+  }
+  return new Set(Object.keys(eventLabels) as EventType[]);
+}
+
 function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [matches, setMatches] = useState<Match[]>([]);
   const [deletedMatches, setDeletedMatches] = useState<Match[]>([]);
   const [selected, setSelected] = useState<Match | null>(null);
   const [events, setEvents] = useState<MatchEvent[]>([]);
-  const [filters, setFilters] = useState<Set<EventType>>(new Set(Object.keys(eventLabels) as EventType[]));
+  const [filters, setFilters] = useState<Set<EventType>>(storedFilters);
   const [showImport, setShowImport] = useState(false);
   const [showEvent, setShowEvent] = useState(false);
-  const [showRejected, setShowRejected] = useState(false);
-  const [notesOnly, setNotesOnly] = useState(false);
-  const [reviewMode, setReviewMode] = useState(false);
+  const [showRejected, setShowRejected] = useState(() => storedBoolean(reviewStorage.rejected));
+  const [notesOnly, setNotesOnly] = useState(() => storedBoolean(reviewStorage.notes));
+  const [reviewMode, setReviewMode] = useState(() => storedBoolean(reviewStorage.mode));
   const [editingEvent, setEditingEvent] = useState<MatchEvent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -136,7 +162,11 @@ function App() {
         ]);
         setMatches(result);
         setDeletedMatches(deleted);
-        setSelected((current) => current ?? result[0] ?? null);
+        setSelected((current) => {
+          if (current) return current;
+          const storedMatch = window.localStorage.getItem(reviewStorage.match);
+          return result.find((match) => match.id === storedMatch) ?? result[0] ?? null;
+        });
         setEngineState("ready");
         setLoading(false);
         return;
@@ -151,8 +181,8 @@ function App() {
 
   useEffect(() => { void connectToEngine(); }, []);
   useEffect(() => {
-    setReviewMode(false);
     if (!selected) { setEvents([]); setAnalysisJob(null); setSignals([]); return; }
+    window.localStorage.setItem(reviewStorage.match, selected.id);
     void api.listEvents(selected.id).then(setEvents).catch((reason: Error) => setError(reason.message));
     void api.latestAnalysis(selected.id)
       .then(async (job) => {
@@ -161,6 +191,19 @@ function App() {
       })
       .catch(() => { setAnalysisJob(null); setSignals([]); });
   }, [selected]);
+
+  useEffect(() => {
+    window.localStorage.setItem(reviewStorage.mode, String(reviewMode));
+  }, [reviewMode]);
+  useEffect(() => {
+    window.localStorage.setItem(reviewStorage.filters, JSON.stringify([...filters]));
+  }, [filters]);
+  useEffect(() => {
+    window.localStorage.setItem(reviewStorage.rejected, String(showRejected));
+  }, [showRejected]);
+  useEffect(() => {
+    window.localStorage.setItem(reviewStorage.notes, String(notesOnly));
+  }, [notesOnly]);
 
   useEffect(() => {
     if (!analysisJob || !["queued", "running"].includes(analysisJob.status)) return;
