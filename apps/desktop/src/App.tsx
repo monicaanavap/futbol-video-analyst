@@ -72,7 +72,8 @@ function hasCoachNote(event: MatchEvent) {
 
 function classificationHint(type: EventType) {
   if (type === "penalty") return "Penal: normalmente es cobrador contra portero, sin barrera.";
-  if (type === "free_kick") return "Tiro libre: normalmente hay barrera o varios defensores frente al balón.";
+  if (type === "corner") return "Corner: se cobra con el pie desde el arco de la esquina.";
+  if (type === "throw_in") return "Saque de banda: se cobra con las manos desde la línea lateral, aunque ocurra muy cerca del corner.";
   if (type === "disallowed_goal") return "Gol anulado: el balón entró, pero la anotación fue invalidada (por ejemplo, fuera de lugar).";
   return null;
 }
