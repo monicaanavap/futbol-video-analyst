@@ -159,49 +159,51 @@ label small { color: #708078; font-weight: 400; line-height: 1.4; }
 .form-error { color: #ef98a5; font-size: 12px; }
 .muted { color: #77867e; }
 
-/* Paleta alternativa inspirada en el boceto de inicio. La paleta original
-   permanece intacta y se puede recuperar desde el selector superior. */
-.theme-blue { color: #eef0e5; background: #1c2d49; }
-.theme-blue .topbar { border-color: #34506a; background: #1b2b46; box-shadow: 0 8px 26px rgba(4, 12, 24, .28); }
-.theme-blue .brand-mark { color: #e7eadb; border: 1px solid #6d8f70; background: #294b3a; }
-.theme-blue .topbar > div:nth-child(2) span { color: #9eb0bd; }
-.theme-blue .palette-toggle { border-color: #526d82; color: #c3d2dc; background: #243b59; }
-.theme-blue .profile-mark { border-color: #719279; color: #e8ecdd !important; background: #294d3b; }
-.theme-blue .primary { color: #edf0df; border-color: #698b68; background: #31563f; box-shadow: 0 5px 20px rgba(39, 77, 56, .3); }
-.theme-blue .primary:hover { background: #3b684b; }
-.theme-blue .sidebar { border-color: #314b66; background: #1b2b47; box-shadow: 10px 0 24px rgba(12, 27, 45, .22); }
-.theme-blue .sidebar-heading p { color: #eaecdf; }
-.theme-blue .sidebar-heading span { color: #cbd5d8; background: #304a63; }
-.theme-blue .match-search input { border-color: #7690a0; color: #eef0e8; background: #355069; }
-.theme-blue .match-search input::placeholder { color: #b6c6cc; }
-.theme-blue .match-search span { color: #e3e8df; }
-.theme-blue .sidebar-tools > button { border-color: #7892a3; color: #e0e8e4; background: #3b566d; }
-.theme-blue .match-card { border-color: #52735c; background: linear-gradient(135deg, #244638, #294f3d); }
-.theme-blue .match-card:hover { background: linear-gradient(135deg, #2a5140, #315b47); }
-.theme-blue .match-card.active { border-color: #8ca781; background: linear-gradient(135deg, #2c553f, #315c45); box-shadow: inset 3px 0 #a3b790; }
-.theme-blue .match-tags i { border-color: #779188; color: #eef0e2; background: #567065; }
-.theme-blue .match-date { color: #bdc9c3; }
-.theme-blue .trash-toggle { border-color: #425f78; color: #b9c9d2; background: #243a57; }
-.theme-blue .workspace { background: radial-gradient(circle at 48% 0, rgba(76, 111, 137, .2), transparent 35%), #1d2e4b; }
-.theme-blue .video-panel, .theme-blue .events-panel { border-color: #8aa1ae; background: linear-gradient(145deg, #38556d, #4a687d); box-shadow: 0 18px 45px rgba(5, 14, 28, .3); }
-.theme-blue video { background: #263745; }
-.theme-blue .timeline-track { background: #c8d1d5; }
-.theme-blue .analysis-card { border-color: #59778d; background: #29435c; }
-.theme-blue .analysis-metrics span { color: #b2c2cb; background: #34536b; }
-.theme-blue .analysis-metrics b { color: #f0f1e8; }
-.theme-blue .filter { border-color: #49657c; color: #aebfca; background: #263e59; }
-.theme-blue .filter.active { border-color: #8299a8; color: #f1f2e8; background: #3a566c; }
-.theme-blue .filter b { color: #d4dde0; background: #4a6377; }
-.theme-blue .section-title { border-color: #7690a0; }
-.theme-blue .event-row { border-color: #60798b; }
-.theme-blue .event-row:hover { background: rgba(27, 47, 67, .28); }
-.theme-blue .event-row small, .theme-blue .event-source { color: #c1ccd1; }
-.theme-blue .event-time { color: #eef0e8; }
-.theme-blue .review-summary { border-color: #718b9b; color: #e5eadf; background: #304e64; }
-.theme-blue .modal { border-color: #6f8899; background: #243a55; }
-.theme-blue input, .theme-blue select { border-color: #577188; color: #f0f1e9; background: #1c3049; }
-.theme-blue .advanced-options { border-color: #536f84; background: #203650; }
-.theme-blue .secondary { border-color: #577188; color: #e2e8e6; background: #2b455f; }
-.theme-blue .dataset-button { border-color: #778b9d; color: #e0e6ee; background: #344a65; }
-.theme-blue .analysis-button { border-color: #688c70; color: #d7eadb; background: #31533f; }
+/* Paleta Estadio: Yellow Green, Twilight Indigo, Dark Spruce, Ivory y Evergreen.
+   La paleta original permanece intacta y se recupera desde el selector superior. */
+.theme-blue { color: #f6f7eb; background: #3a435e; }
+.theme-blue .topbar { border-color: #1b512d; background: #012806; box-shadow: 0 8px 26px rgba(1, 40, 6, .3); }
+.theme-blue .brand-mark { color: #012806; border: 1px solid #b1cf5f; background: #b1cf5f; }
+.theme-blue .topbar > div:nth-child(2) span { color: rgba(246, 247, 235, .68); }
+.theme-blue .palette-toggle { border-color: #b1cf5f; color: #f6f7eb; background: #1b512d; }
+.theme-blue .palette-toggle:hover { color: #012806; background: #b1cf5f; }
+.theme-blue .profile-mark { border-color: #b1cf5f; color: #f6f7eb !important; background: #1b512d; }
+.theme-blue .primary { color: #012806; border-color: #c5df7c; background: #b1cf5f; box-shadow: 0 5px 20px rgba(177, 207, 95, .2); }
+.theme-blue .primary:hover { background: #c5df7c; }
+.theme-blue .sidebar { border-color: #b1cf5f; background: #1b512d; box-shadow: 10px 0 24px rgba(1, 40, 6, .2); }
+.theme-blue .sidebar-heading p { color: #f6f7eb; }
+.theme-blue .sidebar-heading span { color: #012806; background: #b1cf5f; }
+.theme-blue .match-search input { border-color: #b1cf5f; color: #f6f7eb; background: #012806; }
+.theme-blue .match-search input::placeholder { color: rgba(246, 247, 235, .65); }
+.theme-blue .match-search span { color: #b1cf5f; }
+.theme-blue .sidebar-tools > button { border-color: #b1cf5f; color: #f6f7eb; background: #012806; }
+.theme-blue .match-card { border-color: #477a45; background: #012806; }
+.theme-blue .match-card:hover { border-color: #b1cf5f; background: #0a3513; }
+.theme-blue .match-card.active { border-color: #b1cf5f; background: #0e3b19; box-shadow: inset 3px 0 #b1cf5f; }
+.theme-blue .match-card strong, .theme-blue .match-team { color: #f6f7eb; }
+.theme-blue .match-tags i { border-color: #b1cf5f; color: #012806; background: #b1cf5f; }
+.theme-blue .match-date { color: rgba(246, 247, 235, .66); }
+.theme-blue .trash-toggle { border-color: #6d9860; color: #f6f7eb; background: #012806; }
+.theme-blue .workspace { background: radial-gradient(circle at 48% 0, rgba(177, 207, 95, .1), transparent 35%), #3a435e; }
+.theme-blue .video-panel, .theme-blue .events-panel { border-color: #b1cf5f; background: #1b512d; box-shadow: 0 18px 45px rgba(1, 40, 6, .28); }
+.theme-blue video { background: #012806; }
+.theme-blue .timeline-track { background: #f6f7eb; }
+.theme-blue .analysis-card { border-color: #b1cf5f; background: #1b512d; }
+.theme-blue .analysis-metrics span { color: rgba(246, 247, 235, .72); background: #012806; }
+.theme-blue .analysis-metrics b { color: #b1cf5f; }
+.theme-blue .filter { border-color: #69728a; color: #d7dacd; background: #303950; }
+.theme-blue .filter.active { border-color: #b1cf5f; color: #012806; background: #b1cf5f; }
+.theme-blue .filter b { color: #f6f7eb; background: #1b512d; }
+.theme-blue .section-title { border-color: #6d9860; }
+.theme-blue .event-row { border-color: #497a4c; }
+.theme-blue .event-row:hover { background: rgba(1, 40, 6, .3); }
+.theme-blue .event-row small, .theme-blue .event-source { color: rgba(246, 247, 235, .7); }
+.theme-blue .event-time { color: #f6f7eb; }
+.theme-blue .review-summary { border-color: #b1cf5f; color: #f6f7eb; background: #012806; }
+.theme-blue .modal { border-color: #b1cf5f; background: #3a435e; }
+.theme-blue input, .theme-blue select { border-color: #b1cf5f; color: #f6f7eb; background: #012806; }
+.theme-blue .advanced-options { border-color: #78934f; background: #1b512d; }
+.theme-blue .secondary { border-color: #b1cf5f; color: #f6f7eb; background: #1b512d; }
+.theme-blue .dataset-button { border-color: #c8cbd0; color: #f6f7eb; background: #3a435e; }
+.theme-blue .analysis-button { border-color: #b1cf5f; color: #012806; background: #b1cf5f; }
 @media (max-width: 760px) { .app-shell { grid-template: 68px auto / 1fr; } .sidebar { display: none; } .topbar span { display: none; } .workspace { padding: 23px 15px 45px; } .match-heading { align-items: flex-start; gap: 15px; } .heading-actions { flex-direction: column; } .analysis-card { align-items: stretch; flex-direction: column; } .progress-wrap { min-width: 0; } .event-seek { grid-template-columns: 48px 8px 1fr 28px; } .event-source { display: none; } .event-actions { margin-right: 9px; } }

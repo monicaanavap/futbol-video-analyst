@@ -438,7 +438,7 @@ function App() {
         <div><strong>Fútbol Analyst</strong><span>Análisis local · Tus videos no salen de aquí</span></div>
         <div className="topbar-actions">
           <button className="palette-toggle" onClick={() => setPalette((current) => current === "original" ? "blue" : "original")}>
-            {palette === "original" ? "Ver paleta azul" : "Ver paleta original"}
+            {palette === "original" ? "Ver paleta estadio" : "Ver paleta original"}
           </button>
           <button className="primary" disabled={engineState !== "ready"} onClick={() => setShowImport(true)}>+ Importar partido</button>
           <span className="profile-mark" aria-label="Perfil">MN</span>
