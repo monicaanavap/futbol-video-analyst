@@ -103,6 +103,7 @@ const reviewStorage = {
   filters: "futbol-analyst:event-filters",
   rejected: "futbol-analyst:show-rejected",
   notes: "futbol-analyst:notes-only",
+  palette: "futbol-analyst:palette",
 };
 
 function storedBoolean(key: string, fallback = false) {
@@ -147,6 +148,10 @@ function App() {
   const [deletingMatch, setDeletingMatch] = useState(false);
   const [restoringMatch, setRestoringMatch] = useState<string | null>(null);
   const [showTrash, setShowTrash] = useState(false);
+  const [matchSearch, setMatchSearch] = useState("");
+  const [palette, setPalette] = useState<"original" | "blue">(() =>
+    window.localStorage.getItem(reviewStorage.palette) === "blue" ? "blue" : "original"
+  );
   const [signals, setSignals] = useState<VisualSignal[]>([]);
   const [engineState, setEngineState] = useState<"starting" | "ready" | "error">("starting");
 
@@ -205,6 +210,9 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(reviewStorage.notes, String(notesOnly));
   }, [notesOnly]);
+  useEffect(() => {
+    window.localStorage.setItem(reviewStorage.palette, palette);
+  }, [palette]);
 
   useEffect(() => {
     if (!analysisJob || !["queued", "running"].includes(analysisJob.status)) return;
@@ -419,29 +427,46 @@ function App() {
     ? Math.round(signals.reduce((total, signal) => total + signal.player_candidates, 0) / signals.length)
     : 0;
   const ballSamples = signals.filter((signal) => signal.ball_candidates > 0).length;
+  const visibleMatches = matches.filter((match) =>
+    match.title.toLocaleLowerCase("es").includes(matchSearch.trim().toLocaleLowerCase("es")),
+  );
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell theme-${palette}`}>
       <header className="topbar">
         <div className="brand-mark">F</div>
         <div><strong>Fútbol Analyst</strong><span>Análisis local · Tus videos no salen de aquí</span></div>
-        <button className="primary" disabled={engineState !== "ready"} onClick={() => setShowImport(true)}>+ Importar partido</button>
+        <div className="topbar-actions">
+          <button className="palette-toggle" onClick={() => setPalette((current) => current === "original" ? "blue" : "original")}>
+            {palette === "original" ? "Ver paleta azul" : "Ver paleta original"}
+          </button>
+          <button className="primary" disabled={engineState !== "ready"} onClick={() => setShowImport(true)}>+ Importar partido</button>
+          <span className="profile-mark" aria-label="Perfil">MN</span>
+        </div>
       </header>
 
       <aside className="sidebar">
-        <p className="eyebrow">PARTIDOS</p>
+        <div className="sidebar-heading"><p>Últimos partidos</p><span>{matches.length}</span></div>
+        <div className="sidebar-tools">
+          <label className="match-search"><span aria-hidden="true">⌕</span><input value={matchSearch} onChange={(event) => setMatchSearch(event.target.value)} placeholder="Buscar partido" aria-label="Buscar partido" /></label>
+          <button type="button" disabled title="Disponible cuando definamos las etiquetas generales del partido" aria-label="Filtrar partidos próximamente">☷</button>
+        </div>
         {loading && <p className="muted">Iniciando motor local…</p>}
-        {matches.map((match) => (
+        {visibleMatches.map((match) => (
           <button
             className={`match-card ${selected?.id === match.id ? "active" : ""}`}
             key={match.id}
             onClick={() => setSelected(match)}
           >
-            <span className="match-date">{new Date(`${match.created_at}Z`).toLocaleDateString("es-MX")}</span>
             <strong>{match.title}</strong>
-            <span>{formatTime(match.duration_seconds)} · {match.height}p</span>
+            <span className="match-team">Equipo #</span>
+            <span className="match-tags" aria-label="Etiquetas generales del partido">
+              <i>Etiqueta #1</i><i>Etiqueta #2</i><i>Etiqueta #3</i>
+            </span>
+            <span className="match-date">Importado {new Date(`${match.created_at}Z`).toLocaleDateString("es-MX")} · {formatTime(match.duration_seconds)}</span>
           </button>
         ))}
+        {!loading && visibleMatches.length === 0 && <p className="sidebar-empty">No encontramos partidos con ese nombre.</p>}
         <button
           className={`trash-toggle ${showTrash ? "active" : ""}`}
           onClick={() => setShowTrash((value) => !value)}
